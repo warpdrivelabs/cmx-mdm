@@ -10,7 +10,8 @@
 #   - [auth] / [service_auth] / [mdm.*] → ConfigManager 直读（cmx-mdm-app 认证中间件 /
 #     flow_client / 分发引擎 / 死信通知）。
 
-# —— chassis 框架级 ——
+# —— chassis 框架级（[server] 段，与门户 dev.toml 统一形态；旧顶层散字段仍兼容）——
+[server]
 host = "0.0.0.0"
 port = 8095
 log_dir = "logs"
