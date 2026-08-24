@@ -26,6 +26,9 @@ path = "src/main.rs"
 [dependencies]
 # 平台中立核（全部 handler + mdm_routes::<S>() + 分发引擎 + 流程客户端 + 身份中间件 + 页面投递）
 cmx-mdm-app = { workspace = true }
+# 页面只读投递（native+html 通用路由装配；错误类型取 cmx_api_types::Error）
+cmx-form = { workspace = true }
+cmx-api-types = { workspace = true }
 # 通用 HTTP 服务骨架（配置/日志/中间件/优雅关闭/banner + ServiceSpec/run）
 cmx-web-chassis = { workspace = true }
 # 通用技术监控（/_mon 技术页 + 请求遥测 observe 中间件；由 chassis 自动挂）

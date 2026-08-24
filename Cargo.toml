@@ -49,6 +49,8 @@ cmx-utils = { path = "../cmx-container/crates/libs/cmx-utils", version = "0.1.12
 cmx-biz = { path = "../cmx-container/crates/libs/cmx-biz", version = "0.1.12" }
 cmx-traits = { path = "../cmx-container/crates/libs/cmx-traits", version = "0.1.12" }
 cmx-api-types = { path = "../cmx-container/crates/libs/cmx-apis/cmx-api-types", version = "0.1.12" }
+# 页面只读投递（native/html-pages 六端点通用路由，收编原 native_pages.rs）
+cmx-form = { path = "../cmx-container/crates/libs/cmx-form", version = "0.1.12" }
 cmx-database-pg = { path = "../cmx-container/crates/libs/cmx-infra/cmx-database-pg", version = "0.1.12" }
 cmx-web-chassis = { path = "../cmx-container/crates/libs/cmx-web-chassis", version = "0.1.12" }
 cmx-web-monitor = { path = "../cmx-container/crates/libs/cmx-web-monitor", version = "0.1.12" }

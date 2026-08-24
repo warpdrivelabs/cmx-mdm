@@ -62,7 +62,10 @@ async fn main() -> cmx_web_chassis::Result<()> {
     //   webhook 回调）→ 可观测遥测。没有身份层，ctx::current_user_id 恒为匿名（created_by 落空）。
     let api_router = mdm_routes::<()>()
         .route("/mdm/stats", get(dashboard::mdm_stats))
-        .merge(cmx_mdm_app::native_pages::frontend_pages_routes::<()>())
+        // 资产目录遵循规范 v2（relPath 相对 index.json）；信封直用 cmx-api-types。
+        .merge(cmx_form::serve::frontend_pages_routes::<(), cmx_api_types::Error>(
+            cmx_form::serve::PageServeConfig::from_assets(),
+        ))
         .layer(axum::middleware::from_fn(cmx_mdm_app::auth::mw))
         // 可观测中间件：采集每请求 method/path/协议/状态/耗时，喂 /_mon 请求遥测面板。
         .layer(axum::middleware::from_fn(cmx_web_monitor::observe));

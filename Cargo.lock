@@ -849,6 +849,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmx-form"
+version = "0.1.12"
+dependencies = [
+ "axum",
+ "chrono",
+ "cmx-api-types",
+ "cmx-jsonstore",
+ "cmx-utils",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "cmx-jsonstore"
 version = "0.1.12"
 dependencies = [
@@ -884,6 +900,7 @@ dependencies = [
  "cmx-core",
  "cmx-database-pg",
  "cmx-dct-store-pg",
+ "cmx-form",
  "cmx-mdm-model",
  "cmx-mdm-store-pg",
  "cmx-traits",
@@ -900,7 +917,6 @@ dependencies = [
  "tokio",
  "tracing",
  "utoipa",
- "xxhash-rust",
 ]
 
 [[package]]
@@ -923,6 +939,8 @@ version = "0.1.12"
 dependencies = [
  "anyhow",
  "axum",
+ "cmx-api-types",
+ "cmx-form",
  "cmx-mdm-app",
  "cmx-service-base",
  "cmx-web-chassis",

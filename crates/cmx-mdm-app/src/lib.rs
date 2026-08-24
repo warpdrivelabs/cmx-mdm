@@ -33,6 +33,5 @@ pub mod mdm_routes;
 
 // 监控大盘 + 前端联邦。
 pub mod dashboard;
-pub mod native_pages;
 
 pub use mdm_routes::mdm_routes;
