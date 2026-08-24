@@ -1,16 +1,17 @@
 # cmx-mdm-server 实际配置（独立主数据微服务模式）。
 #
-# 加载顺序：本文件（路径由 CONFIG_FILE 指定，回退 MDM_CONFIG，或默认 ./mdm-server.toml）→ 环境变量覆盖。
-# 环境变量优先级最高（同名 MDM_* 环境变量若已设置，覆盖本文件对应值）。
+# 加载顺序：本文件（路径由 CONFIG_FILE 指定，或默认 ./mdm-server.toml）→ 环境变量覆盖。
+# 环境变量优先级最高（[server] 框架键覆盖 SERVER__*，与 ConfigManager `__` 约定同名；业务键见各段注释）。
 #
 # 本文件由**平台统一装配链**消费，不自造私有段：
-#   - chassis 框架级字段（host/port/log_*）→ cmx-web-chassis::ChassisConfig::load；
+#   - chassis 框架级字段（[server] 段 host/port/log_*/graceful_timeout_secs）→
+#     cmx-web-chassis::ChassisConfig::load；
 #   - [[databases]]（标准数据源段，与门户 dev.toml 逐字段同构）→ cmx-service-base::BaseConfig
 #     （经 ConfigManager 三源合并：本文件 ← Nacos 配置中心 ← env）；
 #   - [auth] / [service_auth] / [mdm.*] → ConfigManager 直读（cmx-mdm-app 认证中间件 /
 #     flow_client / 分发引擎 / 死信通知）。
 
-# —— chassis 框架级（[server] 段，与门户 dev.toml 统一形态；旧顶层散字段仍兼容）——
+# —— chassis 框架级（[server] 段，与门户 dev.toml 统一形态）——
 [server]
 host = "0.0.0.0"
 port = 8095
@@ -29,14 +30,14 @@ db_name = "主控数据库"
 db_type = "postgres"
 db_url = "postgres://dbuser_dba:9lWsRQY4i4VToPpkHcCRFzki@192.168.157.46:5432/cmxlocal"
 default = true
+health_check_interval = 60
+health_check_timeout = 5
 [databases.pool_config]
 max_connections = 100
 min_connections = 1
 connect_timeout = 30
 idle_timeout = 600
 max_lifetime = 1800
-health_check_interval = 60
-health_check_timeout = 5
 
 [[databases]]
 db_id = "fico-db"
@@ -93,3 +94,8 @@ allow_private_address = true   # webhook 目标允许私网/回环地址（MDM �
 # 死信/连续失败门户通知（HTTP 回环门户统一端点，不经 cmx-portal 进程内直调）
 [mdm.notify]
 portal_base = "http://127.0.0.1:8080"   # 门户基址（不含 /api）；不可达时降级 warn 日志不阻塞投递
+
+# —— 页面资产（[assets] 段：引擎自持 native/html 页面投递目录；env 覆盖 ASSETS__UI_NATIVE_DIR/ASSETS__UI_HTML_DIR）——
+[assets]
+ui_native_dir = "web/ui-native"
+ui_html_dir   = "web/ui-html"

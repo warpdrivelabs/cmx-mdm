@@ -11,7 +11,7 @@ authors.workspace = true
 #
 # ★ 单 DB 栈（tokio-pg，比 model 简单）：MDM 不落 DDL、不走 sqlx。配置全部走**平台统一装配链**
 # （mdm-server.toml，路径由 CONFIG_FILE 指定）：
-#   - 框架级（MDM_ 前缀 env 覆盖）：MDM_HOST / MDM_PORT（默认 0.0.0.0:8095）/ MDM_LOG_*；
+#   - 框架级（[server] 段；env 覆盖 SERVER__HOST / SERVER__PORT（默认 0.0.0.0:8095）/ SERVER__LOG_*，与 ConfigManager `__` 约定同名）；
 #   - 数据源：标准 [[databases]] 段（与门户 dev.toml 同构）→ cmx-service-base::BaseConfig
 #     （经 ConfigManager 三源合并：本文件 ← Nacos 配置中心 ← env），注册走共享原语
 #     register_pg_datasources——db_id / 连接池 / 健康检查全部配置驱动，零硬编码；

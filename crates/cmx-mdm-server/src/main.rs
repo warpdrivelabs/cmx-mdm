@@ -5,7 +5,8 @@
  * 零 cmx-api 依赖。
  *
  * 配置全部走**平台统一装配链**（mdm-server.toml，路径由 CONFIG_FILE 指定）：
- *   - 框架级：MDM_HOST / MDM_PORT（默认 0.0.0.0:8095）/ MDM_LOG_DIR / MDM_LOG_LEVEL；
+ *   - 框架级：[server] 段（env 覆盖 SERVER__HOST / SERVER__PORT 默认 0.0.0.0:8095 /
+ *     SERVER__LOG_DIR / SERVER__LOG_LEVEL，与 ConfigManager `__` 约定同名）；
  *   - 数据源：标准 [[databases]] 段（与门户 dev.toml 同构）→ cmx-service-base::BaseConfig
  *     （ConfigManager 三源合并读取），注册走共享原语 register_pg_datasources，零硬编码；
  *   - 认证：[auth] 段 → cmx-mdm-app 认证中间件（X-API-Key 校验 + X-Delegated-User-Token 验签）；
@@ -43,9 +44,9 @@ async fn main() -> cmx_web_chassis::Result<()> {
         .await
         .map_err(|e| cmx_web_chassis::ChassisError::Config(format!("基础设施初始化失败: {e}")))?;
 
-    // 框架级配置：MDM_ 前缀环境变量 + mdm-server.toml 的框架字段，默认端口 8095。
-    let mut cfg = ChassisConfig::load("mdm", "MDM", "mdm-server.toml");
-    if std::env::var("MDM_PORT").is_err() && cfg.port == 8080 {
+    // 框架级配置：[server] 段 + SERVER__* env 覆盖（与 ConfigManager `__` 约定同名）+ mdm-server.toml，默认端口 8095。
+    let mut cfg = ChassisConfig::load("mdm", "mdm-server.toml");
+    if std::env::var("SERVER__PORT").is_err() && cfg.port == 8080 {
         cfg.port = 8095; // 避开 8080/8091/8092/8093/8094。
     }
 
