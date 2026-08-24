@@ -15,7 +15,6 @@
 # - 基础设施 + DCT 数据服务（cmx-core/cmx-database-pg/cmx-dct-store-pg/…）→ 跨 ws path 进 ../cmx-container。
 #   （DCT 激活复用 dict_meta/dict_save_apply，查重读 DictMeta；DCT 不反依赖 MDM，无环。取 container 的
 #   cmx-dct-store-pg 而非 cmx-model 的——见下方 cmx-model-meta 消歧说明。）
-# - **cmx-portal → 跨 ws path 进 ../cmx-portalservice**（分发死信经 notify::store::publish 发门户通知）。
 [workspace]
 resolver = "2"
 members = [
@@ -43,8 +42,6 @@ cmx-mdm-app = { path = "crates/cmx-mdm-app", version = "0.1.12" }
 # cmx-portalservice）对 cmx-model-meta 全链同源。
 cmx-dct-store-pg = { path = "../cmx-model/crates/cmx-dct-store-pg", version = "0.1.12" }
 
-# —— 跨 ws 进 cmx-portalservice（分发死信门户通知）——
-cmx-portal = { path = "../cmx-portalservice/crates/cmx-portal", version = "0.1.12" }
 
 # —— 跨 ws 进 cmx-container 基础设施 ——
 cmx-core = { path = "../cmx-container/crates/libs/cmx-core", version = "0.1.12" }
@@ -72,6 +69,8 @@ dashmap = "6"
 rand = "0.8"
 utoipa = { version = "5", features = ["axum_extras", "chrono", "decimal", "uuid"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+# 请求级身份中间件：X-Delegated-User-Token（门户代理转发的用户 JWT）HS256 验签解 sub
+jsonwebtoken = "9"
 xxhash-rust = { version = "0.8", features = ["xxh64"] }
 tokio = { version = "1.41", features = ["full"] }
 axum = { version = "0.8.9", features = ["macros", "multipart"] }

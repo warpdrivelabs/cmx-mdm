@@ -497,23 +497,9 @@ pub fn manual_override_guard() -> Result<()> {
     }
 }
 
-/// 当前登录用户 id（字符串口径，与 CR create_by / flow initiator 对齐；未登录返回 None）。
-///
-/// 身份走 cmx-traits context_scope（task_local），替代原 CmxSvrContext 提取器。语义不变：
-/// 取 auth_context.user_id.trim()，空则 None。activation/scan/merge 的 i64 口径见 [`current_actor_id`]。
-pub(crate) fn current_user_id() -> Option<String> {
-    cmx_traits::auth::context_scope::current_auth()
-        .map(|a| a.user_id.trim().to_string())
-        .filter(|u| !u.is_empty())
-}
-
-/// 当前操作人 id（i64 口径，审计列 operated_by 用）；无认证/空/非数字 → 0。
-/// 复刻原 cmx_api_core::actor::actor_id_i64 语义，改走 cmx-traits context_scope。
-pub(crate) fn current_actor_id() -> i64 {
-    cmx_traits::auth::context_scope::current_auth()
-        .map(|a| a.user_id.trim().parse::<i64>().unwrap_or(0))
-        .unwrap_or(0)
-}
+// 身份助手统一收口 crate::ctx（task_local 实现）；沿用 super::flow_cb::current_user_id /
+// current_actor_id 调用路径，re-export 保持既有引用零改。
+pub(crate) use crate::ctx::{current_actor_id, current_user_id};
 
 /// flow-status 查询参数。
 #[derive(serde::Deserialize, utoipa::IntoParams)]

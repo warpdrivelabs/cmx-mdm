@@ -22,9 +22,6 @@ cmx-mdm-store-pg = { workspace = true }
 # ── 跨 ws：DCT 数据服务（激活/查重复用 dict_meta/DctQuery/DictMeta）──
 cmx-dct-store-pg = { workspace = true }
 
-# ── 跨 ws：门户通知（分发死信 cmx_portal::notify::store::publish）──
-cmx-portal = { workspace = true }
-
 # ── 平台字节对齐信封 + 身份 + DB（不借 cmx-api-core）──
 cmx-api-types = { workspace = true }
 cmx-traits = { workspace = true }
@@ -44,6 +41,8 @@ async-trait = { workspace = true }
 utoipa = { workspace = true }
 # 分发通道：webhook HTTP 客户端 + HMAC 验签 + 通道注册表 + 随机 secret
 reqwest = { workspace = true }
+# 请求级身份中间件：X-Delegated-User-Token（门户代理转发的用户 JWT）HS256 验签解 sub
+jsonwebtoken = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }

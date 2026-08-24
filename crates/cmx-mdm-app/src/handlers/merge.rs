@@ -27,9 +27,7 @@ use super::{default_page, default_page_size};
 /// 取当前请求认证上下文的操作人 id（i64）；无认证 scope / 空 / 非数字 → 0。
 /// 复刻原 cmx_api_core::actor::actor_id_i64 语义，改走 cmx-traits context_scope。
 fn mdm_operated_by() -> i64 {
-    cmx_traits::auth::context_scope::current_auth()
-        .map(|a| a.user_id.trim().parse::<i64>().unwrap_or(0))
-        .unwrap_or(0)
+    crate::ctx::current_actor_id()
 }
 
 /// 列合并请求。

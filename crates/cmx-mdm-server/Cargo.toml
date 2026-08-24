@@ -4,30 +4,44 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 
-# cmx-mdm 独立主数据微服务 **HTTP 服务器**（对标 cmx-model-server / cmx-rpt-server）。
+# cmx-mdm 独立主数据微服务的 **HTTP 服务器**（对标 cmx-model-server / cmx-rpt-server）。
 #
-# 采用通用骨架 cmx-web-chassis。main 只填 ServiceSpec：mdm_routes 路由 + 监控大盘 + 前端联邦 +
-# 数据源注册钩子 + mdm 专属 banner，交 chassis::run 装配。零 cmx-api / 零平台依赖。
+# chassis 装配：mdm_routes 路由 + 监控大盘 + 前端联邦 + 请求级身份中间件 + 数据源钩子 + banner。
+# 零 cmx-api 依赖。
 #
-# ★ 单 DB 栈（tokio-pg，比 model 简单）：MDM 不落 DDL、不走 sqlx。数据源钩子注册两个 tokio-pg 源——
-# 业务库 fico（biz，cm_*/md_*/mdm_activation/cv_mdm_apply，store 经 resolve_db_id 寻址）+ 平台主库
-# cmx（default，分发死信 cmx_portal::notify::store::publish 发门户通知走默认库）。
+# ★ 单 DB 栈（tokio-pg，比 model 简单）：MDM 不落 DDL、不走 sqlx。配置全部走**平台统一装配链**
+# （mdm-server.toml，路径由 CONFIG_FILE 指定）：
+#   - 框架级（MDM_ 前缀 env 覆盖）：MDM_HOST / MDM_PORT（默认 0.0.0.0:8095）/ MDM_LOG_*；
+#   - 数据源：标准 [[databases]] 段（与门户 dev.toml 同构）→ cmx-service-base::BaseConfig
+#     （经 ConfigManager 三源合并：本文件 ← Nacos 配置中心 ← env），注册走共享原语
+#     register_pg_datasources——db_id / 连接池 / 健康检查全部配置驱动，零硬编码；
+#   - 认证：[auth] 段（jwt_secret / api_keys / whitelist）→ cmx-mdm-app 认证中间件
+#     （ConfigManager 直读，X-API-Key 校验 + X-Delegated-User-Token 验签建 scope）；
+#   - 业务：[mdm.flow] / [mdm.distribution] / [mdm.notify] / [service_auth]（ConfigManager 直读）。
 
 [[bin]]
 name = "cmx-mdm-server"
 path = "src/main.rs"
 
 [dependencies]
+# 平台中立核（全部 handler + mdm_routes::<S>() + 分发引擎 + 流程客户端 + 身份中间件 + 页面投递）
 cmx-mdm-app = { workspace = true }
-cmx-database-pg = { workspace = true }
+# 通用 HTTP 服务骨架（配置/日志/中间件/优雅关闭/banner + ServiceSpec/run）
 cmx-web-chassis = { workspace = true }
+# 通用技术监控（/_mon 技术页 + 请求遥测 observe 中间件；由 chassis 自动挂）
 cmx-web-monitor = { workspace = true }
-cmx-service-base = { workspace = true, features = ["config-manager"] }
+# 基础服务库：pg 数据源注册原语 + BaseConfig + **统一基础设施装配**（init_infra/shutdown_infra）。
+# config-manager feature 拉入 cmx-utils（ConfigManager，[auth]/[mdm.*] 配置段）；registry-config
+# feature 拉入注册/配置中心（Nacos 自注册 + 实例缓存 + 30s 同步，开关默认全关，见 .env 可选块）。
+cmx-service-base = { workspace = true, features = ["config-manager", "registry-config"] }
 
+# Web 框架（Router 类型；服务栈由 chassis 提供）
 axum = { workspace = true }
+# 异步运行时（#[tokio::main]）
 tokio = { workspace = true }
+# 自动读取 .env（统一启动契约：bin 自读 .env，无需手动 source）
 dotenvy = { workspace = true }
+# 启动钩子错误通道
 anyhow = { workspace = true }
+# 日志（钩子内 tracing::info）
 tracing = { workspace = true }
-toml = { workspace = true }
-serde = { workspace = true }

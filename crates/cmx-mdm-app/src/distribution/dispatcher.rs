@@ -353,18 +353,56 @@ async fn notify_dead(sub: &Value, event_id: &str, err: &str) {
         targets.push(creator.to_string());
     }
     for uid in targets {
-        let input = cmx_portal::notify::store::NotifyInput {
-            user_id: Some(uid.clone()),
-            center: "message".into(),
-            title: title.clone(),
-            body: Some(body.clone()),
-            level: Some("error".into()),
-            link: None,
-        };
-        if let Err(e) = cmx_portal::notify::store::publish(input).await {
+        let input = json!({
+            "user_id": uid,
+            "center": "message",
+            "title": title,
+            "body": body,
+            "level": "error",
+            "link": null,
+        });
+        if let Err(e) = portal_notify_publish(&input).await {
             tracing::warn!(target: "cmx_mdm::distribution", user = %uid, error = %e, "死信门户通知发送失败");
         }
     }
+}
+
+/// 死信/连续失败门户通知（HTTP 回环）：`{mdm.notify.portal_base}/api/notifications/publish`。
+///
+/// 独立微服务模式：门户通知存储归属门户进程，经 HTTP 回环其统一端点（body 字节对齐
+/// cmx-portal NotifyInput JSON），**避免把门户业务 crate（cmx-portal）拖进 mdm-server 编译图**
+///（cmx-portal 连带 portalservice 整个业务面）。成功 = HTTP 2xx 且信封 `code == 0`
+///（与 flow_client 同一成功判据）；携带 `[service_auth].outgoing_api_key` 作服务身份。
+/// 门户不可达时降级 warn 日志，不阻塞投递主流程。
+async fn portal_notify_publish(input: &Value) -> Result<(), String> {
+    use std::sync::OnceLock;
+
+    use cmx_utils::ConfigManager;
+
+    static CLI: OnceLock<reqwest::Client> = OnceLock::new();
+    let base = ConfigManager::try_global()
+        .and_then(|cm| cm.get_string("mdm.notify.portal_base").ok())
+        .map(|s| s.trim().trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "http://127.0.0.1:8080".to_string());
+    let url = format!("{base}/api/notifications/publish");
+    let mut rb = CLI
+        .get_or_init(reqwest::Client::new)
+        .post(&url)
+        .timeout(std::time::Duration::from_millis(10_000));
+    if let Some(key) = crate::flow_client::outgoing_api_key() {
+        rb = rb.header("X-API-Key", key);
+    }
+    let resp = rb.json(input).send().await.map_err(|e| format!("门户不可达: {e}"))?;
+    let status = resp.status();
+    let payload: Value = resp.json().await.map_err(|e| format!("响应解析失败: {e}"))?;
+    if !status.is_success() {
+        return Err(format!("HTTP {status}"));
+    }
+    if payload.get("code").and_then(|c| c.as_i64()) != Some(0) {
+        return Err(format!("业务失败: {}", payload.get("msg").and_then(|m| m.as_str()).unwrap_or("?")));
+    }
+    Ok(())
 }
 
 /// 解析默认业务库 id（与 flow_cb 回调同模式；多库路由为已知边界，方案 §十五 Q&D-09 同源）。

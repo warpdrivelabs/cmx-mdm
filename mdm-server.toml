@@ -1,6 +1,14 @@
 # cmx-mdm-server 实际配置（独立主数据微服务模式）。
-# 加载顺序：本文件（CONFIG_FILE 指定）→ 环境变量覆盖（同名 MDM_* 优先）。
-# [datasource] 段由 main.rs apply_toml_env() 读出并注入 MDM_PG_URL / MDM_MAIN_PG_URL。
+#
+# 加载顺序：本文件（路径由 CONFIG_FILE 指定，回退 MDM_CONFIG，或默认 ./mdm-server.toml）→ 环境变量覆盖。
+# 环境变量优先级最高（同名 MDM_* 环境变量若已设置，覆盖本文件对应值）。
+#
+# 本文件由**平台统一装配链**消费，不自造私有段：
+#   - chassis 框架级字段（host/port/log_*）→ cmx-web-chassis::ChassisConfig::load；
+#   - [[databases]]（标准数据源段，与门户 dev.toml 逐字段同构）→ cmx-service-base::BaseConfig
+#     （经 ConfigManager 三源合并：本文件 ← Nacos 配置中心 ← env）；
+#   - [auth] / [service_auth] / [mdm.*] → ConfigManager 直读（cmx-mdm-app 认证中间件 /
+#     flow_client / 分发引擎 / 死信通知）。
 
 # —— chassis 框架级 ——
 host = "0.0.0.0"
@@ -9,9 +17,78 @@ log_dir = "logs"
 log_level = "info"
 graceful_timeout_secs = 10
 
-# —— 单 DB 栈（tokio-pg）——
-# mdm_pg_url  → MDM_PG_URL：业务库（cm_*/md_*/mdm_activation/cv_mdm_apply）
-# main_pg_url → MDM_MAIN_PG_URL：平台主库（默认库；分发死信门户通知）
-[datasource]
-mdm_pg_url = "postgres://postgres:postgres@127.0.0.1:5432/fico"
-main_pg_url = "postgres://postgres:postgres@127.0.0.1:5432/cmx"
+# —— 数据源（标准 [[databases]] 段，与门户 dev.toml 同构）——
+# 由 cmx-service-base::BaseConfig::from_config_manager() 读取，注册走共享原语
+# register_pg_datasources——db_id / 连接池 / 健康检查全部配置驱动，零硬编码。
+# 单 DB 栈（tokio-pg）：default 库（平台/治理表）+ biz 业务库（cm_*/md_*/mdm_activation/cv_mdm_apply，
+# store 经 resolve_db_id 寻址；db_id 请求头显式优先，缺失回退 biz 源）。
+[[databases]]
+db_id = "primary"
+db_name = "主控数据库"
+db_type = "postgres"
+db_url = "postgres://dbuser_dba:9lWsRQY4i4VToPpkHcCRFzki@192.168.157.46:5432/cmxlocal"
+default = true
+[databases.pool_config]
+max_connections = 100
+min_connections = 1
+connect_timeout = 30
+idle_timeout = 600
+max_lifetime = 1800
+health_check_interval = 60
+health_check_timeout = 5
+
+[[databases]]
+db_id = "fico-db"
+db_name = "总账数据库"
+db_type = "postgres"
+db_url = "postgres://dbuser_dba:9lWsRQY4i4VToPpkHcCRFzki@192.168.157.46:5432/cmx_fico"
+default = false
+source_type = "biz"
+health_check_interval = 30
+health_check_timeout = 3
+pool_config = { max_connections = 200, min_connections = 1, connect_timeout = 20, idle_timeout = 300, max_lifetime = 900 }
+
+# —— 认证（ConfigManager 直读，cmx-mdm-app/src/auth.rs 消费）——
+# 平台经 MdmProxyModule 转发时注入 X-API-Key（服务身份）+ X-Delegated-User-Token（终端用户 JWT）。
+[auth]
+# 委托令牌（X-Delegated-User-Token: Bearer <用户 JWT>）验签密钥，必须 = 平台签发 JWT 的密钥。
+# 平台真源：cmx-container 未配 [auth.jwt] 段 → 用 JwtConfig 默认
+# (crates/libs/cmx-infra/cmx-auth/src/config.rs 的 JwtConfig 默认 secret)。
+# 若平台 dev-local.toml 配了自定义 auth.jwt.secret，改成那个值。
+jwt_secret = "a7k9m2p4x8q1w5e3r6t0y7u2i9o4p1"
+# 服务间 API Key（逗号分隔；配置后非白名单请求必须携带命中，= 平台 [service_auth].outgoing_api_key）
+api_keys = "cmx_sk_dev_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6"
+# 免用户鉴权路径（前缀匹配；兼容门户带 /api 前缀的写法）。内置 /mdm/health 与 /mdm/flow/callback，
+# 此处可追加（语义对齐门户 dev.toml [auth].whitelist）。
+# whitelist = ["/api/mdm/health"]
+
+# —— 服务间出站身份（回环调门户 /api/flow/* 与 /api/notifications/publish 时携带的 X-API-Key）——
+[service_auth]
+outgoing_api_key = "cmx_sk_dev_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6"
+
+# ==================== MDM 业务段 ====================
+
+# M7 流程审批（CR 送审走流程平台；loopback_base 指向门户——门户再把 /api/flow/* 反代到 flow-server，
+# 与嵌入式时代"回环本进程"同一拓扑语义；集群指 LB/VIP）
+[mdm.flow]
+loopback_base = "http://127.0.0.1:8080"   # 门户基址（不含 /api）
+definition_key = "mdm_cr_approval"        # 流程定义 key
+webhook_secret = "mdm_flow_hook_dev_secret"   # = flow-server FLOW_WEBHOOK_SIGNING_KEY
+timeout_ms = 10000
+manual_override_enabled = false           # M2 手动端点（approve/reject/activate）开关
+
+# M5 分发引擎（Dispatcher 常驻循环；enabled=false 时仅注册通道不 spawn，端点仍可用）
+[mdm.distribution]
+enabled = true                 # 分发引擎总开关
+scan_interval_ms = 2000        # dispatcher 扫描周期
+fanout_batch = 500             # 单轮扇出最大事件数
+deliver_batch = 100            # 单轮投递最大 dispatch 数
+deliver_concurrency = 8        # 跨订阅并发投递上限
+backoff_base_ms = 5000         # 重试退避基数
+backoff_max_ms = 1800000       # 重试退避上限（30min）
+running_reclaim_minutes = 10   # running 残留回收阈值（分钟）
+allow_private_address = true   # webhook 目标允许私网/回环地址（MDM 下游多为内网；外网部署改 false）
+
+# 死信/连续失败门户通知（HTTP 回环门户统一端点，不经 cmx-portal 进程内直调）
+[mdm.notify]
+portal_base = "http://127.0.0.1:8080"   # 门户基址（不含 /api）；不可达时降级 warn 日志不阻塞投递

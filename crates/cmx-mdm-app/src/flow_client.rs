@@ -98,7 +98,7 @@ fn client() -> &'static reqwest::Client {
 
 /// 服务间 API Key（`[service_auth].outgoing_api_key`）。未配置返回 None（回环将走匿名，
 /// 内嵌模式由 mw_auth 兜底，反代模式会被 flow-server 401）。
-fn outgoing_api_key() -> Option<String> {
+pub(crate) fn outgoing_api_key() -> Option<String> {
     let cm = ConfigManager::try_global()?;
     let key = cm.get_string("service_auth.outgoing_api_key").ok()?;
     if key.trim().is_empty() { None } else { Some(key) }

@@ -1,19 +1,21 @@
 /*
  * cmx-mdm 独立主数据微服务 HTTP 服务器（对标 cmx-model-server / cmx-rpt-server）。
  *
- * chassis 装配：mdm_routes 路由 + 监控大盘 + 前端联邦 + 数据源钩子 + banner。零 cmx-api 依赖。
+ * chassis 装配：mdm_routes 路由 + 监控大盘 + 前端联邦 + 请求级身份中间件 + 数据源钩子 + banner。
+ * 零 cmx-api 依赖。
  *
- * ★ 单 DB 栈（tokio-pg）：注册两个源——
- *   - MDM_PG_URL      业务库 fico（biz；cm_* md_* mdm_activation cv_mdm_apply，store resolve_db_id 寻址）
- *   - MDM_MAIN_PG_URL 平台主库 cmx（default；分发死信 cmx_portal notify 发门户通知走默认库）
+ * 配置全部走**平台统一装配链**（mdm-server.toml，路径由 CONFIG_FILE 指定）：
+ *   - 框架级：MDM_HOST / MDM_PORT（默认 0.0.0.0:8095）/ MDM_LOG_DIR / MDM_LOG_LEVEL；
+ *   - 数据源：标准 [[databases]] 段（与门户 dev.toml 同构）→ cmx-service-base::BaseConfig
+ *     （ConfigManager 三源合并读取），注册走共享原语 register_pg_datasources，零硬编码；
+ *   - 认证：[auth] 段 → cmx-mdm-app 认证中间件（X-API-Key 校验 + X-Delegated-User-Token 验签）；
+ *   - 业务：[mdm.flow] / [mdm.distribution] / [mdm.notify] / [service_auth]。
  *
- * 配置：MDM_HOST / MDM_PORT（默认 0.0.0.0:8095）/ MDM_LOG_DIR / MDM_LOG_LEVEL / MDM_CONFIG(toml)。
  * 用法：./mdm.sh  →  curl http://127.0.0.1:8095/api/mdm/health
  */
 
 use axum::Router;
 use axum::routing::get;
-use cmx_database_pg::{DbConfig, DbType};
 use cmx_mdm_app::{dashboard, mdm_routes};
 use cmx_web_chassis::{BannerSpec, ChassisConfig, ServiceSpec, run};
 
@@ -21,67 +23,28 @@ use cmx_web_chassis::{BannerSpec, ChassisConfig, ServiceSpec, run};
 const MDM_ART: &str = r#"
 ███╗   ███╗███████╗ ██████╗  █████╗     ███╗   ███╗██████╗ ███╗   ███╗
 ████╗ ████║██╔════╝██╔════╝ ██╔══██╗    ████╗ ████║██╔══██╗████╗ ████║
-██╔████╔██║█████╗  ██║  ███╗███████║    ██╔████╔██║██║  ██║██╔████╔██║
+██╔████╔██║█████╗  ██║  ███╗███████╗    ██╔████╔██║██║  ██║██╔████╔██║
 ██║╚██╔╝██║██╔══╝  ██║   ██║██╔══██║    ██║╚██╔╝██║██║  ██║██║╚██╔╝██║
 ██║ ╚═╝ ██║███████╗╚██████╔╝██║  ██║    ██║ ╚═╝ ██║██████╔╝██║ ╚═╝ ██║
 ╚═╝     ╚═╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝    ╚═╝     ╚═╝╚═════╝ ╚═╝     ╚═╝
 "#;
 
-#[derive(serde::Deserialize, Default)]
-struct MdmFileConfig {
-    #[serde(default)]
-    datasource: DatasourceSection,
-}
-#[derive(serde::Deserialize, Default)]
-struct DatasourceSection {
-    mdm_pg_url: Option<String>,  // → MDM_PG_URL（业务库）
-    main_pg_url: Option<String>, // → MDM_MAIN_PG_URL（平台主库）
-}
-
-/// 读 mdm-server.toml 的 [datasource] 段，注入 MDM_PG_URL / MDM_MAIN_PG_URL（env 未设时）。
-fn apply_toml_env() {
-    let path = std::env::var("CONFIG_FILE")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .or_else(|| std::env::var("MDM_CONFIG").ok().filter(|s| !s.trim().is_empty()))
-        .unwrap_or_else(|| "mdm-server.toml".to_string());
-    let text = match std::fs::read_to_string(&path) {
-        Ok(t) => t,
-        Err(_) => return,
-    };
-    let file: MdmFileConfig = match toml::from_str(&text) {
-        Ok(f) => f,
-        Err(e) => {
-            tracing::warn!(path = %path, error = %e, "mdm-server.toml 解析失败，数据源段忽略，回退环境变量");
-            return;
-        }
-    };
-    if let Some(v) = file.datasource.mdm_pg_url {
-        if !v.trim().is_empty() && std::env::var("MDM_PG_URL").is_err() {
-            unsafe { std::env::set_var("MDM_PG_URL", v) }
-        }
-    }
-    if let Some(v) = file.datasource.main_pg_url {
-        if !v.trim().is_empty() && std::env::var("MDM_MAIN_PG_URL").is_err() {
-            unsafe { std::env::set_var("MDM_MAIN_PG_URL", v) }
-        }
-    }
-}
-
-/// 业务库 db_id（cm_*/md_* 所在；store resolve_db_id 兜底到此 biz 源）。
-const BIZ_DB_ID: &str = "fico-db";
-/// 平台主库 db_id（默认源；分发死信门户通知）。
-const MAIN_DB_ID: &str = "cmx-db";
-
 #[tokio::main]
 async fn main() -> cmx_web_chassis::Result<()> {
+    // 统一启动契约（与门户/flow/report 一致）：自动读 cwd 的 .env（CONFIG_FILE 指向本仓 toml）。
+    // 必须在 ChassisConfig::load / init_infra（都读 env）之前，故置于 main 首行。
     dotenvy::dotenv().ok();
-    if let Err(e) = cmx_service_base::init_config_manager() {
-        tracing::warn!(error = %e, "全局 ConfigManager 初始化失败，回退 env/默认兜底");
-    }
 
+    // 基础设施装配（与门户 run_platform 同一制度）：本地 toml ← Nacos 远程配置中心 ← env
+    // 三源 ConfigManager + 注册中心客户端（自注册 + 实例缓存 + 30s 服务列表同步）。开关默认
+    // 全关（未开 NACOS_ENABLED 时走 Mock，纯本地 toml+env，行为与接入前一致）；开启后
+    // create 阶段强依赖 Nacos 可达，失败即中止启动（register 阶段失败仅 warn）。
+    cmx_service_base::init_infra()
+        .await
+        .map_err(|e| cmx_web_chassis::ChassisError::Config(format!("基础设施初始化失败: {e}")))?;
+
+    // 框架级配置：MDM_ 前缀环境变量 + mdm-server.toml 的框架字段，默认端口 8095。
     let mut cfg = ChassisConfig::load("mdm", "MDM", "mdm-server.toml");
-    apply_toml_env();
     if std::env::var("MDM_PORT").is_err() && cfg.port == 8080 {
         cfg.port = 8095; // 避开 8080/8091/8092/8093/8094。
     }
@@ -91,10 +54,16 @@ async fn main() -> cmx_web_chassis::Result<()> {
         .tagline("  MEGA MDM · 主数据中心微服务 · cmx-web-chassis ")
         .stops(vec![(40, 208, 154), (45, 160, 220), (59, 130, 255)]);
 
+    // 路由（对任意 state 泛型成立，这里 state = ()）：
+    //   - /api/mdm/*（治理端点，URL 与迁移前完全一致）+ /api/mdm/stats（大盘数据源）；
+    //   - /api/native-pages*（主数据自持前端页只读投递，字节对齐门户信封，供门户 F3 反代）。
+    // 中间件：请求级身份（X-API-Key 校验 + X-Delegated-User-Token 验签建 scope，白名单放行探针/
+    //   webhook 回调）→ 可观测遥测。没有身份层，ctx::current_user_id 恒为匿名（created_by 落空）。
     let api_router = mdm_routes::<()>()
         .route("/mdm/stats", get(dashboard::mdm_stats))
-        // F2：主数据自持前端页只读投递（native），字节对齐门户信封，供门户 F3 反代。
         .merge(cmx_mdm_app::native_pages::frontend_pages_routes::<()>())
+        .layer(axum::middleware::from_fn(cmx_mdm_app::auth::mw))
+        // 可观测中间件：采集每请求 method/path/协议/状态/耗时，喂 /_mon 请求遥测面板。
         .layer(axum::middleware::from_fn(cmx_web_monitor::observe));
     let app_router = Router::new()
         .route("/", get(dashboard::dashboard))
@@ -116,47 +85,48 @@ async fn main() -> cmx_web_chassis::Result<()> {
         .nest_api(false)
         .router(app_router)
         .state(())
-        // 钩子：注册两个 tokio-pg 源（业务库 biz + 平台主库 default）。
+        // 钩子：注册数据源——平台封装：BaseConfig（标准 [[databases]] 段，ConfigManager 三源
+        // 合并）+ 共享注册原语 register_pg_datasources。要求至少配一个 default 库与一个
+        // source_type="biz" 业务库（handler 的 db_id 头路由 / 回退语义依赖后者）。
         .init("datasources", |_meta| {
             Box::pin(async {
-                let biz_url = std::env::var("MDM_PG_URL").unwrap_or_else(|_| {
-                    "postgres://postgres:postgres@127.0.0.1:5432/fico".to_string()
-                });
-                let main_url = std::env::var("MDM_MAIN_PG_URL").unwrap_or_else(|_| {
-                    "postgres://postgres:postgres@127.0.0.1:5432/cmx".to_string()
-                });
-                let configs = vec![
-                    mdm_db_config(MAIN_DB_ID, &main_url, /*default*/ true, /*biz*/ false),
-                    mdm_db_config(BIZ_DB_ID, &biz_url, false, /*biz*/ true),
-                ];
-                cmx_service_base::register_pg_datasources(&configs)
+                let base = cmx_service_base::BaseConfig::from_config_manager()
+                    .map_err(|e| anyhow::anyhow!("读取 [[databases]] 配置失败: {e}"))?;
+                if base.databases.is_empty() {
+                    return Err(anyhow::anyhow!(
+                        "mdm-server.toml 未配置 [[databases]]（需至少一个 default 库 + 一个 source_type=\"biz\" 业务库）"
+                    ));
+                }
+                let has_biz = base
+                    .databases
+                    .iter()
+                    .any(|d| d.source_type.as_deref() == Some("biz"));
+                if !has_biz {
+                    return Err(anyhow::anyhow!(
+                        "[[databases]] 缺少 source_type=\"biz\" 业务库（db_id 请求头缺失时的回退目标）"
+                    ));
+                }
+                let ids: Vec<&str> = base.databases.iter().map(|d| d.db_id.as_str()).collect();
+                cmx_service_base::register_pg_datasources(&base.databases)
                     .await
                     .map_err(|e| anyhow::anyhow!("注册数据源失败: {e}"))?;
-                tracing::info!(
-                    main_db = MAIN_DB_ID, biz_db = BIZ_DB_ID,
-                    "✅ 主数据 tokio-pg 数据源已注册（默认=主库 + biz=业务库）"
-                );
+                tracing::info!(databases = ?ids, "✅ 主数据 tokio-pg 数据源已注册（[[databases]] 配置驱动）");
+                Ok(())
+            })
+        })
+        // 钩子：拉起 M5 分发引擎（通道注册 + Dispatcher 常驻循环；[mdm.distribution].enabled
+        // =false 时仅注册通道不 spawn，端点仍可用——与门户内嵌时代同一开关语义）。
+        .init("distribution", |_meta| {
+            Box::pin(async {
+                cmx_mdm_app::distribution::start_distribution()
+                    .map_err(|e| anyhow::anyhow!("分发引擎启动失败: {e}"))?;
                 Ok(())
             })
         });
 
-    run(spec).await
-}
-
-fn mdm_db_config(db_id: &str, url: &str, default: bool, biz: bool) -> DbConfig {
-    DbConfig {
-        db_type: DbType::Postgres,
-        db_url: url.to_string(),
-        db_id: db_id.to_string(),
-        db_name: None,
-        db_schema: Some("public".to_string()),
-        default,
-        pool_config: Default::default(),
-        health_check_interval: 60,
-        health_check_timeout: 5,
-        domain_code: None,
-        application_code: None,
-        module_code: None,
-        source_type: Some(if biz { "biz".to_string() } else { "default".to_string() }),
-    }
+    let result = run(spec).await;
+    // serve 结束（收到关闭信号或自然退出）：注销注册中心实例后再返回——不用 `?` 提前返回，
+    // 否则 Err 路径会跳过注销（实例要等 Nacos 心跳超时才摘除）。
+    cmx_service_base::shutdown_infra().await;
+    result
 }
