@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "pages": [
+    {
+      "id": "portal.mdm.activation-mapper",
+      "name": "MDM 激活映射配置器",
+      "details": "配置 CR 单据字段→主数据字段的激活映射，存入 mdm_activation 供激活器读取执行。支持头映射（两列 select 对照）+ 明细映射（按 lineType 分组）。",
+      "sourceType": "js",
+      "relPath": "portal/mdm/activation-mapper.js"
+    },
+    {
+      "id": "portal.mdm.master-list",
+      "name": "MDM 主数据通用列表台",
+      "details": "元数据驱动公共列表页：每种主数据挂独立菜单节点，props 注入 dictCode/docType/title/columns。列取自 dct/meta 默认过滤平台列（columns 可覆盖），新增/变更开 cr-form、详情开 master-detail，走 /api/dct/data/search。",
+      "sourceType": "js",
+      "relPath": "portal/mdm/master-list.js"
+    },
+    {
+      "id": "portal.mdm.cr-todo",
+      "name": "MDM 单据列表台",
+      "details": "待办列表：按状态过滤（草稿/待审批/已驳回/已激活/已作废），行内操作提交/通过/驳回/作废/修改重提（克隆）/查看详情，走 /api/mdm/change-requests 审批端点。",
+      "sourceType": "js",
+      "relPath": "portal/mdm/cr-todo.js"
+    },
+    {
+      "id": "portal.mdm.duplicate-check",
+      "name": "MDM 查重候选台",
+      "details": "主数据查重：选记录→find-duplicates 候选列表（score+裁决+字段对照）→合并（merge-requests）/还原（undo），走 /api/mdm/records/find-duplicates 与 /api/mdm/merge-requests 端点。",
+      "sourceType": "js",
+      "relPath": "portal/mdm/duplicate-check.js"
+    },
+    {
+      "id": "portal.mdm.steward",
+      "name": "MDM 数据管家工作台",
+      "details": "管家评审：四区队列（待审/已合并/已驳回/已还原）+ 红线 diff（master vs victim 字段对照）+ 逐字段裁决（master/victim/手填→overrides）合并 + 驳回，走 /api/mdm/merge-requests detail/reject 端点。",
+      "sourceType": "js",
+      "relPath": "portal/mdm/steward.js"
+    },
+    {
+      "id": "portal.mdm.cr-form",
+      "name": "MDM 供应商新增/变更表单",
+      "details": "并列标签页：供应商新增/变更表单（业务字段+银行账户 revo-grid），技术字段自动填充，经 context 读 mode/supplier。",
+      "sourceType": "js",
+      "relPath": "portal/mdm/cr-form.js"
+    },
+    {
+      "id": "portal.mdm.master-detail",
+      "name": "MDM 主数据通用详情",
+      "details": "元数据驱动公共详情页：头字段取 dct/meta 默认过滤列（enum 值映射），子表从激活映射 line_mappings 自动发现（targetDict+parentIdField，剔除外键列）。经 context 读 dictCode/recordId/columns。",
+      "sourceType": "js",
+      "relPath": "portal/mdm/master-detail.js"
+    },
+    {
+      "id": "portal.mdm.health",
+      "name": "MDM 健康检查",
+      "details": "验证 MDM 后端端点可用性（health/activations/change-requests/merge-requests）+ 主数据治理概览 KPI。",
+      "sourceType": "js",
+      "relPath": "portal/mdm/mdm-health.js"
+    },
+    {
+      "id": "portal.mdm.subscription-manager",
+      "name": "MDM 分发订阅管理",
+      "details": "分发订阅配置：过滤列表（目标系统/字典/通道/状态）+ 编辑弹框（基本信息/事件与过滤行编辑/通道配置 webhook·rest_pull/字段映射）+ 测试/启停/删除/手动补发，走 /api/mdm/subscriptions 系列端点。",
+      "sourceType": "js",
+      "relPath": "portal/mdm/subscription-manager.js"
+    },
+    {
+      "id": "portal.mdm.dispatch-monitor",
+      "name": "MDM 分发监控",
+      "details": "分发监控：KPI 六卡（今日投递/成功率/平均耗时/积压/死信/扇出滞后，30s 轮询）+ 三 Tab（投递流水查询与详情 JSON / 事件日志与 pull 消费游标 / 死信批量重发跳过）+ 手动补发，走 /api/mdm/dispatches 与 /api/mdm/events 端点。",
+      "sourceType": "js",
+      "relPath": "portal/mdm/dispatch-monitor.js"
+    }
+  ]
+}

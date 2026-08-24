@@ -1,0 +1,58 @@
+[package]
+name = "cmx-mdm-app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+# cmx-mdm 的**平台中立应用层**（对标 cmx-model-app / cmx-rpt-app「一芯多壳」）。
+#
+# 合并原 cmx-mdm-api 的全部 axum handler（handlers/ + distribution/ 分发引擎 + flow_client 流程
+# 客户端），暴露对任意 axum state 泛型 `S` 成立的路由表 mdm_routes::<S>() + 监控大盘 + 前端联邦。
+#
+# 与 cmx-container 解耦：**不依赖 cmx-api-core**（不认 CmxAppState/CmxSvrContext）。信封类型直用
+# cmx-api-types。原 handler 里丢弃不用的 State(_s)/CmxSvrContext(_ctx) 提取器一并删除 → 路由对任意
+# S 成立。少数真用身份的审计 handler（scan/merge 的 operated_by）改走 cmx-traits context_scope（复刻
+# 原 actor_id_i64 语义：user_id 解析 i64，缺省 0）。resolve_db_id_from_headers 内联为本 crate db_id.rs。
+
+[dependencies]
+# ── 域内库 ──
+cmx-mdm-model = { workspace = true }
+cmx-mdm-store-pg = { workspace = true }
+
+# ── 跨 ws：DCT 数据服务（激活/查重复用 dict_meta/DctQuery/DictMeta）──
+cmx-dct-store-pg = { workspace = true }
+
+# ── 跨 ws：门户通知（分发死信 cmx_portal::notify::store::publish）──
+cmx-portal = { workspace = true }
+
+# ── 平台字节对齐信封 + 身份 + DB（不借 cmx-api-core）──
+cmx-api-types = { workspace = true }
+cmx-traits = { workspace = true }
+cmx-database-pg = { workspace = true }
+cmx-core = { workspace = true }
+cmx-utils = { workspace = true }
+cmx-biz = { workspace = true }
+
+# ── Web 框架 + 序列化 ──
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+# OpenAPI 派生（handler #[utoipa::path] 自包含）
+utoipa = { workspace = true }
+# 分发通道：webhook HTTP 客户端 + HMAC 验签 + 通道注册表 + 随机 secret
+reqwest = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+dashmap = { workspace = true }
+rand = { workspace = true }
+# native page rev 内容哈希
+xxhash-rust = { workspace = true }
+
+[features]
+default = []
+channel-kafka = []
+channel-rocketmq = []

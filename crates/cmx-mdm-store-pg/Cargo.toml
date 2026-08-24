@@ -1,0 +1,39 @@
+[package]
+name = "cmx-mdm-store-pg"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+# 主数据（MDM）模块的 PostgreSQL 持久化/服务层。
+# M0 阶段：仅错误助手（api_err / api_err_db）占位。activation_store / dct_accessor / doc_accessor
+# / md_accessor 在 M1 填充（激活器读写映射配置、cm_* 写入闸口、CR 单据读取、治理表读写）。
+# 接 cmx-database-pg 全局 manager；表由 model_center（cm_* / cv_*）和迁移（md_* / mdm_activation）建。
+
+[dependencies]
+# 内部依赖 - MDM 中立模型（LifecycleStatus / DTO）
+cmx-mdm-model = { workspace = true }
+# 内部依赖 - tokio-postgres 并行 DB 层（DatabaseManager 全局单例：query/execute/事务）
+cmx-database-pg = { workspace = true }
+# 内部依赖 - 核心库（DataValue）
+cmx-core = { workspace = true }
+# 内部依赖 - 主键铸号（next_pk_id / snowflake_id_str）
+cmx-utils = { workspace = true }
+# 内部依赖 - 编码引擎 trait（GlobalCodeMinter，激活器铸主数据 code）
+cmx-traits = { workspace = true }
+# 内部依赖 - 业务错误 + 错误码（BizError，DOC/DCT 共享）
+cmx-biz = { workspace = true }
+# 内部依赖 - API 通用类型（Error/Result 信封，与 cmx-api 保持同一错误类型）
+cmx-api-types = { workspace = true }
+# 内部依赖 - DCT 字典解析 + 事务化写入（激活器 create 分支复用 dict_upsert，纳入主事务）
+cmx-dct-store-pg = { workspace = true }
+
+# JSON（映射配置 / 提议值）
+serde_json = { workspace = true }
+# 序列化框架
+serde = { workspace = true }
+# 异步运行时
+tokio = { workspace = true }
+# 日志追踪
+tracing = { workspace = true }
+# SHA256（cluster_hash 去重：member_ids 升序后稳定 hash，跨重启一致）
+sha2 = { workspace = true }

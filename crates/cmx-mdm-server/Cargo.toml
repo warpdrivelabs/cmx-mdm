@@ -1,0 +1,33 @@
+[package]
+name = "cmx-mdm-server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+# cmx-mdm 独立主数据微服务 **HTTP 服务器**（对标 cmx-model-server / cmx-rpt-server）。
+#
+# 采用通用骨架 cmx-web-chassis。main 只填 ServiceSpec：mdm_routes 路由 + 监控大盘 + 前端联邦 +
+# 数据源注册钩子 + mdm 专属 banner，交 chassis::run 装配。零 cmx-api / 零平台依赖。
+#
+# ★ 单 DB 栈（tokio-pg，比 model 简单）：MDM 不落 DDL、不走 sqlx。数据源钩子注册两个 tokio-pg 源——
+# 业务库 fico（biz，cm_*/md_*/mdm_activation/cv_mdm_apply，store 经 resolve_db_id 寻址）+ 平台主库
+# cmx（default，分发死信 cmx_portal::notify::store::publish 发门户通知走默认库）。
+
+[[bin]]
+name = "cmx-mdm-server"
+path = "src/main.rs"
+
+[dependencies]
+cmx-mdm-app = { workspace = true }
+cmx-database-pg = { workspace = true }
+cmx-web-chassis = { workspace = true }
+cmx-web-monitor = { workspace = true }
+cmx-service-base = { workspace = true, features = ["config-manager"] }
+
+axum = { workspace = true }
+tokio = { workspace = true }
+dotenvy = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+toml = { workspace = true }
+serde = { workspace = true }

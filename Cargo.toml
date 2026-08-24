@@ -1,0 +1,82 @@
+# cmx-mdm —— 独立主数据（MDM）微服务 workspace（从 cmx-container 抽出，对标 cmx-model / cmx-report）。
+#
+# 承载主数据治理能力中心：激活映射 / 变更请求(CR)审批 / 查重去重 / 合并 golden record /
+# 订阅分发(webhook/kafka/rocketmq) / 审计事件 / 流程平台对接。
+#
+# 「一芯多壳」（对标 cmx-model）：
+# - **中立核** cmx-mdm-app（新建）：全部 axum handler（合并原 cmx-mdm-api）+ 泛型路由表
+#   mdm_routes::<S>() + 分发引擎 + 流程客户端 + 监控大盘 + 前端联邦。信封直用 cmx-api-types，
+#   不依赖 cmx-api-core（不认 CmxAppState）。
+# - **独立壳** cmx-mdm-server（本 workspace）：chassis bin :8095，单 DB 栈（tokio-pg）。
+# - **平台壳** cmx-mdm-proxy（留 cmx-container，M5 新建）：proxy-only 反代到独立壳，前端零改。
+# - 域内库 cmx-mdm-{model,store-pg}（从 container 物理迁入）。
+#
+# ★ 跨 workspace 依赖（本库须与以下两仓并排存在）：
+# - 基础设施 + DCT 数据服务（cmx-core/cmx-database-pg/cmx-dct-store-pg/…）→ 跨 ws path 进 ../cmx-container。
+#   （DCT 激活复用 dict_meta/dict_save_apply，查重读 DictMeta；DCT 不反依赖 MDM，无环。取 container 的
+#   cmx-dct-store-pg 而非 cmx-model 的——见下方 cmx-model-meta 消歧说明。）
+# - **cmx-portal → 跨 ws path 进 ../cmx-portalservice**（分发死信经 notify::store::publish 发门户通知）。
+[workspace]
+resolver = "2"
+members = [
+    "crates/cmx-mdm-model",
+    "crates/cmx-mdm-store-pg",
+    "crates/cmx-mdm-app",
+    "crates/cmx-mdm-server",
+]
+
+[workspace.package]
+version = "0.1.12"
+edition = "2024"
+authors = ["skylake@pansoft.com"]
+
+[workspace.dependencies]
+# —— 域内 MDM crate（纯 path）——
+cmx-mdm-model = { path = "crates/cmx-mdm-model", version = "0.1.12" }
+cmx-mdm-store-pg = { path = "crates/cmx-mdm-store-pg", version = "0.1.12" }
+cmx-mdm-app = { path = "crates/cmx-mdm-app", version = "0.1.12" }
+
+# —— 跨 ws 进 cmx-model（DCT 数据服务，激活/查重复用）——
+# 模型中心（含 DCT）已抽独立 workspace cmx-model，容器内原址 crate 退役。故本库的 cmx-dct-store-pg
+# 取自 cmx-model（单一事实源）。为避免 package collision（cmx-model-meta 经 cmx-portal 与本链两路径
+# 须同源），cmx-portalservice 的 cmx-model-meta 亦已指向 cmx-model 副本——三仓（cmx-model/cmx-mdm/
+# cmx-portalservice）对 cmx-model-meta 全链同源。
+cmx-dct-store-pg = { path = "../cmx-model/crates/cmx-dct-store-pg", version = "0.1.12" }
+
+# —— 跨 ws 进 cmx-portalservice（分发死信门户通知）——
+cmx-portal = { path = "../cmx-portalservice/crates/cmx-portal", version = "0.1.12" }
+
+# —— 跨 ws 进 cmx-container 基础设施 ——
+cmx-core = { path = "../cmx-container/crates/libs/cmx-core", version = "0.1.12" }
+cmx-utils = { path = "../cmx-container/crates/libs/cmx-utils", version = "0.1.12" }
+cmx-biz = { path = "../cmx-container/crates/libs/cmx-biz", version = "0.1.12" }
+cmx-traits = { path = "../cmx-container/crates/libs/cmx-traits", version = "0.1.12" }
+cmx-api-types = { path = "../cmx-container/crates/libs/cmx-apis/cmx-api-types", version = "0.1.12" }
+cmx-database-pg = { path = "../cmx-container/crates/libs/cmx-infra/cmx-database-pg", version = "0.1.12" }
+cmx-web-chassis = { path = "../cmx-container/crates/libs/cmx-web-chassis", version = "0.1.12" }
+cmx-web-monitor = { path = "../cmx-container/crates/libs/cmx-web-monitor", version = "0.1.12" }
+cmx-service-base = { path = "../cmx-container/crates/libs/cmx-service-base", version = "0.1.12", default-features = false }
+
+# —— 外部 crate（版本照抄 cmx-container 根）——
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+toml = "0.8"
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+async-trait = "0.1"
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+dashmap = "6"
+rand = "0.8"
+utoipa = { version = "5", features = ["axum_extras", "chrono", "decimal", "uuid"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+xxhash-rust = { version = "0.8", features = ["xxh64"] }
+tokio = { version = "1.41", features = ["full"] }
+axum = { version = "0.8.9", features = ["macros", "multipart"] }
+dotenvy = "0.15"
+
+[profile.release]
+opt-level = 3
+lto = "thin"

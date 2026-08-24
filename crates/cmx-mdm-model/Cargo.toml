@@ -1,0 +1,28 @@
+[package]
+name = "cmx-mdm-model"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+# 主数据（MDM）模块的语义中立层：主数据生命周期状态枚举（LifecycleStatus，只
+# published/frozen/archived/merged，无 draft）、激活器纯逻辑占位（activation/codegen，M1 填充）、
+# 匹配/存活算法占位（match_algo/survivorship，M3 填充）。DB-free，不依赖 store-pg / api。
+
+[dependencies]
+# 内部依赖 - 核心库
+cmx-core = { workspace = true }
+# 内部依赖 - 工具
+cmx-utils = { workspace = true }
+# 内部依赖 - 业务错误 + 落库前列级校验（DOC/DCT 共享，留在 cmx-biz）
+cmx-biz = { workspace = true }
+
+# 序列化框架（DTO 反序列化 + 枚举序列化）
+serde = { workspace = true }
+# JSON（弱类型 Value，扩展属性/提议值）
+serde_json = { workspace = true }
+# 时间（effective_date 生效日判断）
+chrono = { workspace = true }
+# 日志（match_algo 块超上限护栏 warn）
+tracing = { workspace = true }
+# M5 分发通道抽象（DistributionChannel trait 异步方法）
+async-trait = { workspace = true }

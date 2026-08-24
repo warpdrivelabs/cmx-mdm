@@ -1,0 +1,22 @@
+# 构建产物（target 体积大，5G+）
+/target/
+.DS_Store
+
+# 注意：.cargo/config.toml 是**必须**纳入版本控制的（nora registry 定义 + aliyun 镜像，
+# 缺它跨 workspace 解析 cmx-container 根的 [patch.nora] 会失败）；Cargo.lock 亦保留
+# （本库含二进制 cmx-mdm-server，锁定依赖利于可复现构建）。故不忽略这两者。
+
+# 运行态日志（滚动文件，不入版本控制）
+/logs/
+
+# 本地启动配置（含 PG 口令，dotenvy 加载；切勿提交）
+/.env
+/.env.*
+
+# M2/M3 前的临时参考副本（原 dct/doc/model 的 -api handler 源，供合并入 cmx-model-app 后删除）
+/_ref/
+
+# 备份/临时副本文件（不入版本控制）
+*.jsonback
+*.bak
+**/.DS_Store

@@ -1,0 +1,17 @@
+# cmx-mdm-server 实际配置（独立主数据微服务模式）。
+# 加载顺序：本文件（CONFIG_FILE 指定）→ 环境变量覆盖（同名 MDM_* 优先）。
+# [datasource] 段由 main.rs apply_toml_env() 读出并注入 MDM_PG_URL / MDM_MAIN_PG_URL。
+
+# —— chassis 框架级 ——
+host = "0.0.0.0"
+port = 8095
+log_dir = "logs"
+log_level = "info"
+graceful_timeout_secs = 10
+
+# —— 单 DB 栈（tokio-pg）——
+# mdm_pg_url  → MDM_PG_URL：业务库（cm_*/md_*/mdm_activation/cv_mdm_apply）
+# main_pg_url → MDM_MAIN_PG_URL：平台主库（默认库；分发死信门户通知）
+[datasource]
+mdm_pg_url = "postgres://postgres:postgres@127.0.0.1:5432/fico"
+main_pg_url = "postgres://postgres:postgres@127.0.0.1:5432/cmx"
