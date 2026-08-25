@@ -983,7 +983,7 @@ export default {
       const host = ctx && ctx.host; currentHost = host
       coord = readCoord(ctx)
       // 预加载全部查重字典（历史筛选下拉用，不依赖当前 dictCode）
-      try { await loadAllDicts() } catch (e) { console.error('[dup-check] loadAllDicts', e); cmx().cmxWarn && cmx().cmxWarn(`查重字典目录加载失败：${e.message || e}`) }
+      try { await loadAllDicts() } catch (e) { console.error('[dup-check] loadAllDicts', e); cmx().cmxWarn?.(`查重字典目录加载失败：${e.message || e}`) }
       // 历史改为切到「合并历史」tab 时按需加载（loadHist 在 bind 的 cmx-view-change 里触发）
       if (host) whenRendered(host, '.pg', (r) => { rootEl = r; bind(r) })
       // coord 缺失时仍渲染页面，条件区提示「请配置菜单 props 的 domain/application/module」
