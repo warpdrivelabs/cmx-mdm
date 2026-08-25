@@ -406,7 +406,7 @@ export default {
       state.application = get('application') || props.application || ''
       // 聚合模式先取类型目录（渲染筛选下拉/类型列用）；失败降级显示原始类型码，不阻断列表。
       if (state.aggregate) { try { await loadTypeOptions() } catch (e) { console.warn('[cr-todo] type options fail', e) } }
-      try { await load() } catch (e) { console.error('[cr-todo] init fail', e) }
+      try { await load() } catch (e) { console.error('[cr-todo] init fail', e); cmx().cmxError && cmx().cmxError(`待办列表加载失败：${e.message || e}`) }
       if (host) whenRendered(host, '.pg', (r) => bind(r))
       return `<style>${styleCss()}</style>${viewHtml()}`
     },

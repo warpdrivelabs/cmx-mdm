@@ -510,7 +510,7 @@ export default {
       const host = ctx && ctx.host; currentHost = host
       coord = readCoord(ctx)
       state.dbId = (ctx && ctx.props && (ctx.props.dbId || ctx.props.db_id)) || (coord && coord.dbId) || ''
-      try { await loadDicts(); await loadCounts(); await reloadCurrent() } catch (e) { console.error('[steward] init fail', e) }
+      try { await loadDicts(); await loadCounts(); await reloadCurrent() } catch (e) { console.error('[steward] init fail', e); cmx().cmxError && cmx().cmxError(`初始化失败：${e.message || e}`) }
       if (host) whenRendered(host, '.pg', (r) => bind(r))
       return `<style>${styleCss()}</style>${viewHtml()}`
     },

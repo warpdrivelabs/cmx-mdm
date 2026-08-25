@@ -578,21 +578,21 @@ function bindTree(host, st, root) {
     st.treeSel = id
     st.page = 1
     renderTree(st, root) // 展开态在 Set，重渲染不丢；滚动位置由 renderTree 保留
-    loadRows(st).then(() => applyData(host))
+    loadRows(st).then(() => applyData(host)).catch((e) => { console.warn('[master-list] 装载失败', e); cmx().cmxError && cmx().cmxError(`列表装载失败：${e.message || e}`) })
   })
 }
 
 function bind(host, root) {
   const st = getState(host); if (!st) return
   root.querySelector('#mlAdd')?.addEventListener('click', () => openTab(host, st, `新增${st.entityName || ''}`, 'portal.mdm.cr-form', { mode: 'create', docType: st.docType, crType: 'create', ...coordCtx(st) }, { single: true }))
-  root.querySelector('#mlReload')?.addEventListener('click', () => { loadRows(st).then(() => applyData(host)) })
-  root.querySelector('#mlFilter')?.addEventListener('cmx-filter-search', (e) => { st.kw = e.detail?.text || ''; st.page = 1; loadRows(st).then(() => applyData(host)) })
+  root.querySelector('#mlReload')?.addEventListener('click', () => { loadRows(st).then(() => applyData(host)).catch((e) => { console.warn('[master-list] 装载失败', e); cmx().cmxError && cmx().cmxError(`列表装载失败：${e.message || e}`) }) })
+  root.querySelector('#mlFilter')?.addEventListener('cmx-filter-search', (e) => { st.kw = e.detail?.text || ''; st.page = 1; loadRows(st).then(() => applyData(host)).catch((e) => { console.warn('[master-list] 装载失败', e); cmx().cmxError && cmx().cmxError(`列表装载失败：${e.message || e}`) }) })
   root.querySelector('#mlFilter')?.addEventListener('cmx-filter-reset', () => {
     st.kw = ''; st.conds = {}; st.page = 1
     // 条件控件重置：重建 slot 内容（首项「全部」选中态由重建保证）；树选中保留（导航语义）
     const fbEl = root.querySelector('#mlFilter')
     if (fbEl) fbEl.innerHTML = st.condFields.map(condFieldHtml).join('')
-    loadRows(st).then(() => applyData(host))
+    loadRows(st).then(() => applyData(host)).catch((e) => { console.warn('[master-list] 装载失败', e); cmx().cmxError && cmx().cmxError(`列表装载失败：${e.message || e}`) })
   })
   // 条件胶囊 change（委托）：即时过滤（下拉操作成本低，无需等点搜索）
   root.addEventListener('change', (ev) => {
@@ -604,7 +604,7 @@ function bind(host, root) {
     if (lab) lab.classList.toggle('active', v !== '')
     st.conds[sel.getAttribute('data-cond')] = v
     st.page = 1
-    loadRows(st).then(() => applyData(host))
+    loadRows(st).then(() => applyData(host)).catch((e) => { console.warn('[master-list] 装载失败', e); cmx().cmxError && cmx().cmxError(`列表装载失败：${e.message || e}`) })
   })
   const pager = root.querySelector('#mlPager')
   if (pager) {
@@ -612,7 +612,7 @@ function bind(host, root) {
       const d = e.detail || {}
       if (d.pageSize && d.pageSize !== st.pageSize) { st.pageSize = d.pageSize; st.page = 1 }
       else st.page = d.page || 1
-      loadRows(st).then(() => applyData(host))
+      loadRows(st).then(() => applyData(host)).catch((e) => { console.warn('[master-list] 装载失败', e); cmx().cmxError && cmx().cmxError(`列表装载失败：${e.message || e}`) })
     })
   }
   if (st.treeMode) { renderTree(st, root); bindTree(host, st, root) }

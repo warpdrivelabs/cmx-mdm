@@ -64,7 +64,7 @@ async function runChecks() {
       cr: await tot('?page=1'), draft: await tot('?docStatus=draft'), approving: await tot('?docStatus=approving'),
       activated: await tot('?docStatus=activated'), rejected: await tot('?docStatus=rejected'),
     }
-  } catch { state.stats = null }
+  } catch (e) { state.stats = null; console.warn('[mdm-health] 概览统计加载失败', e); cmx().cmxWarn && cmx().cmxWarn(`概览统计加载失败：${e.message || e}`) }
 }
 
 function viewHtml() {

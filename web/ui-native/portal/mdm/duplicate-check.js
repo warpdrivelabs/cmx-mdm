@@ -187,7 +187,7 @@ async function loadDictList() {
         }
       } catch (e) { /* 单文件失败跳过 */ }
     }))
-  } catch (e) { /* 整体失败返回空 */ }
+  } catch (e) { console.warn('[dup-check] loadDictList 整体失败（返回空目录）:', e && e.message || e) }
   _dictListCache = out
   return out
 }
@@ -642,13 +642,13 @@ function bind(root) {
   // 执行合并
   root.querySelector('#dcMerge')?.addEventListener('click', () => doMerge().catch((e) => cmx().cmxError?.(`合并失败：${e.message}`)))
   // 历史
-  root.querySelector('#dcHistDict')?.addEventListener('change', (e) => { state.histDict = e.target.value; state.histPage = 1; loadHist().then(refresh) })
+  root.querySelector('#dcHistDict')?.addEventListener('change', (e) => { state.histDict = e.target.value; state.histPage = 1; loadHist().then(refresh).catch((err) => cmx().cmxError?.(`加载历史失败：${err.message || err}`)) })
   const hk = root.querySelector('#dcHistKw')
   hk?.addEventListener('change', (e) => { state.histKw = e.target.value })
-  hk?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { state.histPage = 1; loadHist().then(refresh) } })
-  root.querySelector('#dcHistSearch')?.addEventListener('click', () => { state.histPage = 1; loadHist().then(refresh) })
-  root.querySelector('#dcHistPrev')?.addEventListener('click', () => { if (state.histPage > 1) { state.histPage--; loadHist().then(refresh) } })
-  root.querySelector('#dcHistNext')?.addEventListener('click', () => { state.histPage++; loadHist().then(refresh) })
+  hk?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { state.histPage = 1; loadHist().then(refresh).catch((err) => cmx().cmxError?.(`加载历史失败：${err.message || err}`)) } })
+  root.querySelector('#dcHistSearch')?.addEventListener('click', () => { state.histPage = 1; loadHist().then(refresh).catch((err) => cmx().cmxError?.(`加载历史失败：${err.message || err}`)) })
+  root.querySelector('#dcHistPrev')?.addEventListener('click', () => { if (state.histPage > 1) { state.histPage--; loadHist().then(refresh).catch((err) => cmx().cmxError?.(`加载历史失败：${err.message || err}`)) } })
+  root.querySelector('#dcHistNext')?.addEventListener('click', () => { state.histPage++; loadHist().then(refresh).catch((err) => cmx().cmxError?.(`加载历史失败：${err.message || err}`)) })
   root.querySelectorAll('[data-undo]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); doUndo(b.dataset.undo).catch((err) => cmx().cmxError?.(`还原失败：${err.message}`)) }))
   // 历史行点击 → 加载合并详情
   root.querySelectorAll('tr.hist-row').forEach((tr) => tr.addEventListener('click', () => loadHistDetail(tr.dataset.mid).catch((err) => cmx().cmxError?.(`加载详情失败：${err.message}`))))
@@ -983,7 +983,7 @@ export default {
       const host = ctx && ctx.host; currentHost = host
       coord = readCoord(ctx)
       // 预加载全部查重字典（历史筛选下拉用，不依赖当前 dictCode）
-      try { await loadAllDicts() } catch (e) { console.error('[dup-check] loadAllDicts', e) }
+      try { await loadAllDicts() } catch (e) { console.error('[dup-check] loadAllDicts', e); cmx().cmxWarn && cmx().cmxWarn(`查重字典目录加载失败：${e.message || e}`) }
       // 历史改为切到「合并历史」tab 时按需加载（loadHist 在 bind 的 cmx-view-change 里触发）
       if (host) whenRendered(host, '.pg', (r) => { rootEl = r; bind(r) })
       // coord 缺失时仍渲染页面，条件区提示「请配置菜单 props 的 domain/application/module」

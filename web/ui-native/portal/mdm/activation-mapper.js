@@ -1371,10 +1371,10 @@ let initCoordKey = ''
 
 async function loadPageData() {
   // 各加载器独立 try/catch：doc/dct 元数据缺失不能阻断激活列表加载。
-  try { await loadMeta() } catch (e) { console.error('[activation-mapper] loadMeta fail', e) }
-  try { await loadDictCatalog() } catch (e) { console.error('[activation-mapper] loadDictCatalog fail', e) }
-  try { await loadCodeRules() } catch (e) { console.error('[activation-mapper] loadCodeRules fail', e) }
-  try { await loadList() } catch (e) { console.error('[activation-mapper] loadList fail', e) }
+  try { await loadMeta() } catch (e) { console.error('[activation-mapper] loadMeta fail', e); cmx().cmxWarn && cmx().cmxWarn(`元数据加载失败：${e.message || e}`) }
+  try { await loadDictCatalog() } catch (e) { console.error('[activation-mapper] loadDictCatalog fail', e); cmx().cmxWarn && cmx().cmxWarn(`字典目录加载失败：${e.message || e}`) }
+  try { await loadCodeRules() } catch (e) { console.error('[activation-mapper] loadCodeRules fail', e); cmx().cmxWarn && cmx().cmxWarn(`编码规则目录加载失败：${e.message || e}`) }
+  try { await loadList() } catch (e) { console.error('[activation-mapper] loadList fail', e); cmx().cmxError && cmx().cmxError(`激活列表加载失败：${e.message || e}`) }
 }
 
 async function ensurePageData(ctx) {
