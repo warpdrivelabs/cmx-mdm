@@ -17,7 +17,7 @@
 //! 护栏：NULL 巨簇防护（空簇键不进共享桶）、桶上限 [`BLOCK_CAP`] = 500（超限截断+warn）。
 //! 精确等值分块——模糊簇键（soundex/前缀）留作后续增强。
 //!
-//! 详见 `docs` / `.trae/documents/MDM主数据管理平台/` 下的算法原理文档。
+//! 详见 `docs` / `documents/MDM主数据管理平台/` 下的算法原理文档。
 
 use serde_json::{Map, Value};
 
