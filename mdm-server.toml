@@ -97,5 +97,5 @@ portal_base = "http://127.0.0.1:8080"   # 门户基址（不含 /api）；不可
 
 # —— 页面资产（[assets] 段：引擎自持 native/html 页面投递目录；env 覆盖 ASSETS__UI_NATIVE_DIR/ASSETS__UI_HTML_DIR）——
 [assets]
-ui_native_dir = "web/ui-native"
-ui_html_dir   = "web/ui-html"
+ui_native_dir = "../cmx-container/assets/mdm/web/ui-native"
+ui_html_dir = "../cmx-container/assets/mdm/web/ui-html"
