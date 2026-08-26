@@ -341,29 +341,39 @@ async fn notify_dead(sub: &Value, event_id: &str, err: &str) {
             )
             .await;
     }
-    // 门户通知：创建人 + admin（通知中心 center=message，level=error）
+    // 门户通知：创建人 + admin（通知中心 center=message，level=error）。
+    // 双数组防御：created_by 可能是用户名也可能是用户 id，两类数组并给，服务端并集去重、
+    // 不存在者丢弃。aggKey=订阅 id：同订阅 1h 窗口内死信合并计数，防通知风暴。
     let title = format!(
         "主数据分发死信：{} → {}",
         sub["dict_code"].as_str().unwrap_or("?"),
         sub["target_sys"].as_str().unwrap_or("?")
     );
     let body = format!("事件 {event_id} 投递耗尽重试进入死信：{err}");
-    let mut targets: Vec<String> = vec!["admin".into()];
+    let mut usernames: Vec<String> = vec!["admin".into()];
+    let mut user_ids: Vec<String> = Vec::new();
     if let Some(creator) = sub["created_by"].as_str().filter(|s| !s.is_empty()) {
-        targets.push(creator.to_string());
+        usernames.push(creator.to_string());
+        user_ids.push(creator.to_string());
     }
-    for uid in targets {
-        let input = json!({
-            "user_id": uid,
-            "center": "message",
-            "title": title,
-            "body": body,
-            "level": "error",
-            "link": null,
-        });
-        if let Err(e) = portal_notify_publish(&input).await {
-            tracing::warn!(target: "cmx_mdm::distribution", user = %uid, error = %e, "死信门户通知发送失败");
-        }
+    let expire_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64 + 30 * 86_400_000)
+        .unwrap_or_default();
+    let input = json!({
+        // camelCase 契约（NotifyInput serde rename_all=camelCase；历史 snake_case 已被忽略致 401）
+        "center": "message",
+        "title": title,
+        "body": body,
+        "level": "error",
+        "type": "mdm.dead_letter",
+        "source": "mdm",
+        "targets": { "usernames": usernames, "userIds": user_ids },
+        "aggKey": sub["id"].as_i64().map(|v| v.to_string()).or_else(|| sub["id"].as_str().map(String::from)).unwrap_or_default(),
+        "expireAt": expire_at,
+    });
+    if let Err(e) = portal_notify_publish(&input).await {
+        tracing::warn!(target: "cmx_mdm::distribution", error = %e, "死信门户通知发送失败");
     }
 }
 
