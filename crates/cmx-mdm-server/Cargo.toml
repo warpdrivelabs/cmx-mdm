@@ -37,6 +37,10 @@ cmx-web-monitor = { workspace = true }
 # config-manager feature 拉入 cmx-utils（ConfigManager，[auth]/[mdm.*] 配置段）；registry-config
 # feature 拉入注册/配置中心（Nacos 自注册 + 实例缓存 + 30s 同步，开关默认全关，见 .env 可选块）。
 cmx-service-base = { workspace = true, features = ["config-manager", "registry-config"] }
+# 编码引擎（CodeEngine）+ 其 trait 侧（GlobalCodeMinter 注入点）：激活器铸号（MDM_GYS 等
+# dictMeta.codeRule）在**本进程**落库时发生，须由本 server 自注入——与 cmx-model-server 同款。
+cmx-code-api = { workspace = true }
+cmx-traits = { workspace = true }
 
 # Web 框架（Router 类型；服务栈由 chassis 提供）
 axum = { workspace = true }

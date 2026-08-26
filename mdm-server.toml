@@ -28,8 +28,8 @@ graceful_timeout_secs = 10
 db_id = "primary"
 db_name = "主控数据库"
 db_type = "postgres"
-#db_url = "postgres://dbuser_dba:9lWsRQY4i4VToPpkHcCRFzki@192.168.157.46:5432/cmxlocal"
-db_url = "postgres://dbuser_dba:9lWsRQY4i4VToPpkHcCRFzki@192.168.1.14:5432/cmxlocal"
+#db_url = "postgres://dbuser_dba:9lWsRQY4i4VToPpkHcCRFzki@192.168.1.14:5432/cmxlocal"
+db_url = "postgres://postgres:postgres@192.168.1.100:5432/cmx"
 default = true
 health_check_interval = 60
 health_check_timeout = 5
@@ -44,8 +44,8 @@ max_lifetime = 1800
 db_id = "fico-db"
 db_name = "总账数据库"
 db_type = "postgres"
-#db_url = "postgres://dbuser_dba:9lWsRQY4i4VToPpkHcCRFzki@192.168.157.46:5432/cmx_fico"
-db_url = "postgres://dbuser_dba:9lWsRQY4i4VToPpkHcCRFzki@192.168.1.14:5432/cmx_fico"
+#db_url = "postgres://dbuser_dba:9lWsRQY4i4VToPpkHcCRFzki@192.168.1.14:5432/cmx_fico"
+db_url = "postgres://postgres:postgres@192.168.1.100:5432/fico"
 default = false
 source_type = "biz"
 health_check_interval = 30
@@ -98,6 +98,11 @@ allow_private_address = true   # webhook 目标允许私网/回环地址（MDM �
 portal_base = "http://127.0.0.1:8080"   # 门户基址（不含 /api）；不可达时降级 warn 日志不阻塞投递
 
 # —— 页面资产（[assets] 段：引擎自持 native/html 页面投递目录；env 覆盖 ASSETS__UI_NATIVE_DIR/ASSETS__UI_HTML_DIR）——
+# root：定义/字典内容根（cmx-jsonstore 消费：assets.root → ASSETS__ROOT → ./data）。
+# MDM 激活器进程内解析 DCT/DOC 元数据（dict_meta/resolve_dict → meta/definitions 树）依赖此根；
+# 缺省回退 ./data（本仓无 data 目录）会导致「字典 xxx 未在任何 DAM 下找到」激活失败。
+# 定义中心真源在 model 域（与 model-server-dev.toml 同指一处，两进程共享同一棵定义树）。
 [assets]
+root = "../cmx-container/assets/model/data"
 ui_native_dir = "../cmx-container/assets/mdm/web/ui-native"
 ui_html_dir = "../cmx-container/assets/mdm/web/ui-html"

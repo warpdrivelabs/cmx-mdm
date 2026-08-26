@@ -41,6 +41,10 @@ cmx-mdm-app = { path = "crates/cmx-mdm-app", version = "0.1.12" }
 # 须同源），cmx-portalservice 的 cmx-model-meta 亦已指向 cmx-model 副本——三仓（cmx-model/cmx-mdm/
 # cmx-portalservice）对 cmx-model-meta 全链同源。
 cmx-dct-store-pg = { path = "../cmx-model/crates/cmx-dct-store-pg", version = "0.1.12" }
+# 编码引擎（CodeEngine 实现 cmx-traits CodeMinter；cmx_code_rule/seq/gap 三表在业务库）——
+# MDM 激活器进程内铸号（dictMeta.codeRule → mint_dict_code → GlobalCodeMinter）依赖此注入，
+# 与 cmx-model-server 的自注入同源（独立微服务各自注入，见 cmx-mdm-server main.rs）。
+cmx-code-api = { path = "../cmx-model/crates/cmx-code-api", version = "0.1.12" }
 
 
 # —— 跨 ws 进 cmx-container 基础设施 ——

@@ -115,6 +115,17 @@ async fn main() -> cmx_web_chassis::Result<()> {
                     .await
                     .map_err(|e| anyhow::anyhow!("注册数据源失败: {e}"))?;
                 tracing::info!(databases = ?ids, "✅ 主数据 tokio-pg 数据源已注册（[[databases]] 配置驱动）");
+                // 编码引擎全局注入：MDM 激活器（cm_supplier 等 DCT 落库 + dictMeta.codeRule
+                // 铸号）在本进程发生，须自注入 GlobalCodeMinter——与 cmx-model-server 同款
+                // （CodeEngine 无状态，按 db_id 查业务库 cmx_code_* 三表）。未注入时激活器
+                // mint_dict_code 静默跳过铸号、回退 RandomCodeGenerator 占位码。幂等失败只 warn。
+                if let Err(e) = cmx_traits::code::GlobalCodeMinter::set(std::sync::Arc::new(
+                    cmx_code_api::engine::CodeEngine,
+                )) {
+                    tracing::warn!("编码引擎全局注入失败（可能重复初始化）：{e}");
+                } else {
+                    tracing::info!("✅ 编码引擎已注入（GlobalCodeMinter=CodeEngine，激活器铸号）");
+                }
                 Ok(())
             })
         })
