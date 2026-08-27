@@ -246,6 +246,12 @@ function styleCss() {
 }
 function esc(s) { return String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])) }
 
+// 办理人显示名：优先服务端姓名快照（nickName 昵称优先 / userName username 口径，
+// 20260827 起随审批意见落库），存量意见行无快照回退 userId。
+function displayUserName (c) {
+  return c.nickName || c.userName || c.userId || '—'
+}
+
 function viewHtml() {
   if (state.loading) return `<div class="pg"><div class="loading">正在加载表单元数据…</div></div>`
   if (state.loadErr) return `<div class="pg"><div class="load-err">⚠ ${esc(state.loadErr)}</div></div>`
@@ -438,7 +444,7 @@ function flowHistoryHtml() {
         <div class="fh-rail"><span class="fh-dot ${dotCls}"></span><span class="fh-link"></span></div>
         <div class="fh-body">
           <div class="fh-node-hd">${esc(NODE_LABEL[c.nodeBpmnId] || c.nodeBpmnId || '办理')}${d ? `<cmx-status-tag tone="${tone}" variant="subtle" dot size="sm">${esc(d)}</cmx-status-tag>` : ''}</div>
-          <div class="fh-user">${esc(c.userId || '—')}</div>
+          <div class="fh-user">${esc(displayUserName(c))}</div>
           <div class="fh-time">${esc(fmtCmtTime(c.createdAt))}</div>
           ${c.comment ? `<div class="fh-comment">${esc(c.comment)}</div>` : ''}
         </div>
