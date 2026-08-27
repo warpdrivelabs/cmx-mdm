@@ -22,7 +22,7 @@
  * 页面间无法相对 import 共享代码。）
  *
  * 并列门户标签页（关闭互不影响）：
- *   新增   → portal.mdm.cr-form（mode=create + docType，单例）
+ *   新增   → portal.mdm.cr-form（mode=create + docType，每次新开——单例会在提交后复用旧表单）
  *   变更   → portal.mdm.cr-form（mode=update + docType + targetId）
  *   详情   → portal.mdm.master-detail（dictCode + recordId，透传 columns 保持一致）
  *
@@ -112,8 +112,8 @@ function coordCtx(st) {
   return { domain: c.domain, application: c.application, module: c.module || 'mdm', dbId: c.dbId }
 }
 
-// 打开并列门户标签页。key 含 recordId/targetId（多开去重），single=单例。
-function openTab(host, st, caption, nativePage, context, opts = {}) {
+// 打开并列门户标签页。key 含 recordId/targetId（同记录去重），无标识（如新增）每次新开。
+function openTab(host, st, caption, nativePage, context) {
   let app = null
   try { app = document.querySelector('cmx-portal-app') } catch { app = null }
   if (!app || typeof app.openNode !== 'function') {
@@ -125,7 +125,7 @@ function openTab(host, st, caption, nativePage, context, opts = {}) {
   }
   if (!app || typeof app.openNode !== 'function') { console.warn('[master-list] 未找到 portal-app.openNode'); return }
   const ctxKey = (context && (context.crId || context.recordId || (context.target && context.target.id) || context.targetId)) || ''
-  const key = opts.single ? 'single' : (ctxKey || Date.now())
+  const key = ctxKey || Date.now()
   const c = st.coord || {}
   app.openNode({
     id: `${nativePage}-${key}`, name: nativePage, caption, type: 'workspace-node',
@@ -584,7 +584,7 @@ function bindTree(host, st, root) {
 
 function bind(host, root) {
   const st = getState(host); if (!st) return
-  root.querySelector('#mlAdd')?.addEventListener('click', () => openTab(host, st, `新增${st.entityName || ''}`, 'portal.mdm.cr-form', { mode: 'create', docType: st.docType, crType: 'create', ...coordCtx(st) }, { single: true }))
+  root.querySelector('#mlAdd')?.addEventListener('click', () => openTab(host, st, `新增${st.entityName || ''}`, 'portal.mdm.cr-form', { mode: 'create', docType: st.docType, crType: 'create', ...coordCtx(st) }))
   root.querySelector('#mlReload')?.addEventListener('click', () => { loadRows(st).then(() => applyData(host)).catch((e) => { console.warn('[master-list] 装载失败', e); cmx().cmxError?.(`列表装载失败：${e.message || e}`) }) })
   root.querySelector('#mlFilter')?.addEventListener('cmx-filter-search', (e) => { st.kw = e.detail?.text || ''; st.page = 1; loadRows(st).then(() => applyData(host)).catch((e) => { console.warn('[master-list] 装载失败', e); cmx().cmxError?.(`列表装载失败：${e.message || e}`) }) })
   root.querySelector('#mlFilter')?.addEventListener('cmx-filter-reset', () => {
