@@ -26,6 +26,8 @@ cmx-dct-store-pg = { workspace = true }
 cmx-api-types = { workspace = true }
 # 页面只读投递（native/html-pages 通用路由，替代原 native_pages.rs；信封直用 cmx-api-types）
 cmx-form = { workspace = true }
+# 引擎应用层横切件：dbid 请求库路由唯一真源（本仓 src/db_id.rs 已缩为 re-export shim）
+cmx-engine-kit = { workspace = true }
 cmx-traits = { workspace = true }
 cmx-database-pg = { workspace = true }
 cmx-core = { workspace = true }

@@ -879,6 +879,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmx-engine-kit"
+version = "0.1.12"
+dependencies = [
+ "axum",
+ "cmx-api-types",
+ "cmx-core",
+ "cmx-database-pg",
+ "cmx-traits",
+ "cmx-utils",
+ "cmx-web-monitor",
+ "jsonwebtoken",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "cmx-form"
 version = "0.1.12"
 dependencies = [
@@ -930,6 +948,7 @@ dependencies = [
  "cmx-core",
  "cmx-database-pg",
  "cmx-dct-store-pg",
+ "cmx-engine-kit",
  "cmx-form",
  "cmx-mdm-model",
  "cmx-mdm-store-pg",

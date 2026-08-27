@@ -96,20 +96,19 @@ async fn main() -> cmx_web_chassis::Result<()> {
             Box::pin(async {
                 let base = cmx_service_base::BaseConfig::from_config_manager()
                     .map_err(|e| anyhow::anyhow!("读取 [[databases]] 配置失败: {e}"))?;
-                if base.databases.is_empty() {
-                    return Err(anyhow::anyhow!(
-                        "mdm-server.toml 未配置 [[databases]]（需至少一个 default 库 + 一个 source_type=\"biz\" 业务库）"
-                    ));
-                }
-                let has_biz = base
-                    .databases
-                    .iter()
-                    .any(|d| d.source_type.as_deref() == Some("biz"));
-                if !has_biz {
-                    return Err(anyhow::anyhow!(
-                        "[[databases]] 缺少 source_type=\"biz\" 业务库（db_id 请求头缺失时的回退目标）"
-                    ));
-                }
+                // require_default=true 为收编时补齐：原内联校验漏查（注释与代码脱节），
+                // 三份 toml（mdm-server / -dev / -100）已核实全部配齐，不卡任何环境。
+                cmx_service_base::validate_databases(
+                    &base.databases,
+                    &cmx_service_base::DatasourceRules {
+                        require_default: true,
+                        require_biz: true,
+                        ..Default::default()
+                    },
+                )
+                .map_err(|e| anyhow::anyhow!(
+                    "数据源校验失败（需 default 库 + source_type=\"biz\" 业务库）: {e}"
+                ))?;
                 let ids: Vec<&str> = base.databases.iter().map(|d| d.db_id.as_str()).collect();
                 cmx_service_base::register_pg_datasources(&base.databases)
                     .await
