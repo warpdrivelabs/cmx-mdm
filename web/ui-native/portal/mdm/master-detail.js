@@ -88,6 +88,7 @@ function styleCss() {
   `
 }
 function esc(s) { return String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])) }
+function escAttr(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])) }
 
 // 列 caption（{zh_CN} 或字符串）→ 文本。
 function captionOf(col) {
@@ -126,8 +127,8 @@ function viewHtml(st) {
   const rec = st.record || {}
   const labelField = (st.dictMeta && st.dictMeta.labelField) || 'name'
   const headCols = pickCols(st, st.dictMeta)
-  const kv = (l, v) => `<cmx-desc-item label="${esc(l)}">${v == null || v === '' ? '—' : esc(v)}</cmx-desc-item>`
-  const headHtml = `<div class="card"><div class="card-title">${st.icon ? `<ui5-icon name="${esc(st.icon)}" mode="Decorative"></ui5-icon>` : ''}${esc(st.title || '')}·${esc(rec[labelField] || '')}</div>
+  const kv = (l, v) => `<cmx-desc-item label="${escAttr(l)}">${v == null || v === '' ? '—' : esc(v)}</cmx-desc-item>`
+  const headHtml = `<div class="card"><div class="card-title">${st.icon ? `<ui5-icon name="${escAttr(st.icon)}" mode="Decorative"></ui5-icon>` : ''}${esc(st.title || '')}·${esc(rec[labelField] || '')}</div>
     <cmx-desc-list columns="3" border>${headCols.map((c) => kv(captionOf(c), displayVal(c, rec[cid(c)]))).join('')}</cmx-desc-list></div>`
   const subsHtml = (st.subs || []).map((sub) => {
     const cols = sub.cols
