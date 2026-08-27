@@ -99,6 +99,7 @@ const state = {
   flowHistory: null,           // 分段审批历史（flow-history 接口，流程卡数据源）
   reviewCtx: null,             // M7.1 流程按钮数据源 { canReview, canWithdraw, taskId, instanceId }
   loading: true, loadErr: '',
+  saving: false,             // 保存/提交/单据操作进行中（互斥锁+busy 态）：防连点并发——首次保存并发会插多条单
 }
 let rootEl = null
 // init 调用令牌：每次 content 重新进入页面时自增，使旧的异步加载链在 await 后判定过期而中止，
@@ -182,6 +183,13 @@ function styleCss() {
     box-shadow:inset 0 -2px 0 var(--neo-cyan,#00b4d8); }
   .loading { padding:40px; text-align:center; color:var(--sapContent_LabelColor); font-size:13px; }
   .load-err { padding:24px; color:var(--sapNegativeTextColor,#b00); font-size:13px; }
+  /* 保存/提交进行中：页面顶部 indeterminate 细进度条（busy 滑块动画，色取 UI5 busy 变量派生） */
+  .cr-busybar { position:sticky; top:0; z-index:6; height:3px; overflow:hidden;
+    background:color-mix(in srgb, var(--sapContent_BusyColor,#0a6ed1) 16%, transparent); }
+  .cr-busybar::before { content:''; display:block; width:36%; height:100%;
+    background:var(--sapContent_BusyColor,#0a6ed1); border-radius:2px;
+    animation:cr-busy-move 1.1s ease-in-out infinite; }
+  @keyframes cr-busy-move { 0% { transform:translateX(-110%);} 55% { transform:translateX(190%);} 100% { transform:translateX(290%);} }
   /* 关键信息查重引导提示条 */
   .key-tip { display:flex; align-items:flex-start; gap:8px; margin-bottom:10px; padding:8px 12px;
     border-radius:6px; font-size:12px; line-height:1.5; color:var(--sapContent_LabelColor);
@@ -1019,90 +1027,126 @@ function collectLines() {
   return { inserted, updated, deleted: [...state.deletedLineIds] }
 }
 
+// 写操作按钮（保存/提交/作废等）：busy 时全部禁用，避免请求在途期间换按钮继续触发。
+const WRITE_BTN_IDS = ['fSave', 'fSubmit', 'fSave2', 'fSubmit2', 'fEditSave', 'fCrSubmit', 'fAbort']
+/**
+ * 写操作 busy 态开关：按钮禁用 + 文案加「…」+ 页面顶部 indeterminate 进度条。
+ * off 时对已被 refresh 重建（脱离文档）的按钮跳过恢复——重建后的按钮本就是初始可用态。
+ */
+function setWriteBusy(on) {
+  if (!rootEl) return
+  for (const id of WRITE_BTN_IDS) {
+    const b = rootEl.querySelector('#' + id)
+    if (!b) continue
+    if (on) {
+      if (b.disabled) continue
+      b.dataset.busyLabel = b.textContent
+      b.disabled = true
+      b.textContent = `${b.dataset.busyLabel}…`
+    } else if (b.dataset.busyLabel != null) {
+      if (b.isConnected) { b.disabled = false; b.textContent = b.dataset.busyLabel }
+      delete b.dataset.busyLabel
+    }
+  }
+  const pg = rootEl.querySelector('.pg')
+  const bar = rootEl.querySelector('.cr-busybar')
+  if (on && pg && !bar) pg.insertAdjacentHTML('afterbegin', '<div class="cr-busybar" aria-hidden="true"></div>')
+  else if (!on && bar) bar.remove()
+}
+
 function doSave(submit) {
   const C = cmx()
+  if (state.saving) { C.cmxWarn?.('正在保存/提交中，请稍候'); return }
   const data0 = collectHeadData()
   const nameVal = (data0[state.nameFieldKey] != null ? String(data0[state.nameFieldKey]) : '').trim()
   if (!nameVal) { C.cmxWarn?.(`${state.nameCaption}不能为空`); return }
   if (typeof C.saveDocData !== 'function') { C.cmxError?.('组件库未加载，无法保存'); return }
+  // 互斥锁在 commitGridEdits 的 rAF 窗口前置位：连点只放行第一次，其余在入口即被拒。
+  state.saving = true
+  setWriteBusy(true)
   // 先收拢未提交的明细行内编辑（失焦/派发 change 触发 revo-grid flush），再构造 changeset 保存
   commitGridEdits(async () => {
-    // 保存并提交（submit=true）：前置确认——提交后进入审批流，本页不再可改。
-    // 保存草稿（submit=false）为高频暂存，不加确认以免反复打断录入。
-    if (submit) {
-      const ok = await C.cmxConfirm?.({ title: '保存并提交', message: '确认保存并提交审批？提交后进入审批流程，单据内容将无法在此页继续修改。', danger: false })
-      if (ok === false) return
-    }
-    const changes = {}
-    if (state.savedCrId != null) {
-      changes.cv_mdm_apply = { updated: [{ id: state.savedCrId, fields: buildHead() }] }
-    } else {
-      changes.cv_mdm_apply = { inserted: [{ id: HEAD_TID, fields: buildHead() }] }
-    }
-    const { inserted: lineIns, updated: lineUpd, deleted: lineDel } = collectLines()
-    const lineChanges = {}
-    if (lineIns.length) lineChanges.inserted = lineIns
-    if (lineUpd.length) lineChanges.updated = lineUpd
-    if (lineDel.length) lineChanges.deleted = lineDel
-    if (lineIns.length || lineUpd.length || lineDel.length) changes[TABLE_NAMES[1]] = lineChanges
     try {
-      const data = await C.saveDocData(null,
-        { ...DOC_DEF, dbId: state.dbId },
-        { saveMode: 'merge', changes, tableNames: TABLE_NAMES,
-          // 单据字段铸号规则覆盖：activation 配置的 doc_code_rules 覆盖单据元数据 codeRule
-          // （激活配置优先）。state.activation 在 init 时按 docType+crType 加载。
-          codeRuleOverrides: (state.activation && state.activation.doc_code_rules) || undefined })
-      const idMap = (data && data.idMap) || {}
-      const isFirstSave = state.savedCrId == null
-      if (isFirstSave && idMap[HEAD_TID] != null) state.savedCrId = idMap[HEAD_TID]
-      if (lineIns.length) syncSavedLineIds(idMap)
-      // 删行已落库（cmx-doc merge deleted 已执行），清空本次记录，避免下次保存重复删
-      state.deletedLineIds = []
-      const crId = state.savedCrId
-      if (submit && crId != null) {
-        await apiPost('/api/mdm/change-requests/submit', { crId }, state.dbId)
-      }
-      showToast(submit ? `变更申请 ${crId} 已提交审批` : (isFirstSave ? `已创建变更申请 ${crId}（草稿）` : `变更申请 ${crId} 已更新`))
-      // 回显后端铸号 doc_no：草稿保存不 refresh（保留用户输入继续编辑），拉详情把 doc_no 写进对应单元格；
-      // view 草稿编辑态走下方 refresh 重建，由 headInitialValue 顶层列回退统一回显（二者互补不重复）。
-      if (!submit && crId != null) {
-        try {
-          const detail = await apiGet(`/api/mdm/change-requests/detail?crId=${crId}`, state.dbId)
-          state.crHead = (detail && detail.head) || {}
-          // view 草稿编辑态保存成功后，同步刷新明细行（detail 现已返回 line 真实 id），
-          // 使紧随的 refresh() 从最新 crLines 重建 grid：既有行带 _savedId（再编辑走 update），
-          // 编辑期间新增的行也回写真实 id 而非退化成合成 id（否则下次保存又被当 insert）。
-          if (state.mode === 'view') state.crLines = (detail && detail.lines) || state.crLines
-          const docNo = state.crHead.doc_no
-          if (docNo != null && docNo !== '' && state.mode !== 'view') {
-            for (const f of headForms) {
-              const cur = (f && typeof f.getData === 'function') ? f.getData() : null
-              if (cur && Object.prototype.hasOwnProperty.call(cur, 'doc_no')) f.setDataSet({ ...cur, doc_no: String(docNo) })
-            }
-          }
-        } catch (e) { /* 回显失败不阻断保存结果 */ }
-      }
-      // view 草稿编辑态保存（submit=false）成功后，回退到只读查看
-      if (!submit && state.mode === 'view' && state.editing) { state.editing = false; refresh() }
-      // 保存并提交成功后切只读视图：CR 已进审批流不应再改，避免重复点「保存并提交」
-      // 触发 submit 状态校验失败 → cmxError 模态遮罩锁页面。保存草稿保持可编辑（可继续修改）。
+      // 保存并提交（submit=true）：前置确认——提交后进入审批流，本页不再可改。
+      // 保存草稿（submit=false）为高频暂存，不加确认以免反复打断录入。
       if (submit) {
-        state.mode = 'view'
-        // 同步 crId：create/update 新建保存并提交后切 view 详情页，doCrAction（提交/通过/驳回/作废）
-        // 读 state.crId；不同步则 !crId 静默 return → 详情页操作无反应（无弹窗/无接口/无报错）。
-        state.crId = crId
-        // 提交后 CR 已进审批流：detail + 流程上下文一起重拉，按钮组（发起人撤回等）与
-        // 流程卡随 approving 态渲染，否则显示"无操作权限/暂无审批记录"的过期内容。
-        await reloadDetail()
-        await reloadFlowCtx()
-        refresh()
+        const ok = await C.cmxConfirm?.({ title: '保存并提交', message: '确认保存并提交审批？提交后进入审批流程，单据内容将无法在此页继续修改。', danger: false })
+        if (ok === false) return
       }
-    } catch (e) {
-      if (e && e.violations && typeof C.formatViolations === 'function') {
-        C.cmxError?.(`数据校验未通过：\n${C.formatViolations(e.violations, TABLE_NAMES)}`)
+      const changes = {}
+      if (state.savedCrId != null) {
+        changes.cv_mdm_apply = { updated: [{ id: state.savedCrId, fields: buildHead() }] }
       } else {
-        C.cmxError?.(`保存失败：${e.message}`)
+        changes.cv_mdm_apply = { inserted: [{ id: HEAD_TID, fields: buildHead() }] }
       }
+      const { inserted: lineIns, updated: lineUpd, deleted: lineDel } = collectLines()
+      const lineChanges = {}
+      if (lineIns.length) lineChanges.inserted = lineIns
+      if (lineUpd.length) lineChanges.updated = lineUpd
+      if (lineDel.length) lineChanges.deleted = lineDel
+      if (lineIns.length || lineUpd.length || lineDel.length) changes[TABLE_NAMES[1]] = lineChanges
+      try {
+        const data = await C.saveDocData(null,
+          { ...DOC_DEF, dbId: state.dbId },
+          { saveMode: 'merge', changes, tableNames: TABLE_NAMES,
+            // 单据字段铸号规则覆盖：activation 配置的 doc_code_rules 覆盖单据元数据 codeRule
+            // （激活配置优先）。state.activation 在 init 时按 docType+crType 加载。
+            codeRuleOverrides: (state.activation && state.activation.doc_code_rules) || undefined })
+        const idMap = (data && data.idMap) || {}
+        const isFirstSave = state.savedCrId == null
+        if (isFirstSave && idMap[HEAD_TID] != null) state.savedCrId = idMap[HEAD_TID]
+        if (lineIns.length) syncSavedLineIds(idMap)
+        // 删行已落库（cmx-doc merge deleted 已执行），清空本次记录，避免下次保存重复删
+        state.deletedLineIds = []
+        const crId = state.savedCrId
+        if (submit && crId != null) {
+          await apiPost('/api/mdm/change-requests/submit', { crId }, state.dbId)
+        }
+        showToast(submit ? `变更申请 ${crId} 已提交审批` : (isFirstSave ? `已创建变更申请 ${crId}（草稿）` : `变更申请 ${crId} 已更新`))
+        // 回显后端铸号 doc_no：草稿保存不 refresh（保留用户输入继续编辑），拉详情把 doc_no 写进对应单元格；
+        // view 草稿编辑态走下方 refresh 重建，由 headInitialValue 顶层列回退统一回显（二者互补不重复）。
+        if (!submit && crId != null) {
+          try {
+            const detail = await apiGet(`/api/mdm/change-requests/detail?crId=${crId}`, state.dbId)
+            state.crHead = (detail && detail.head) || {}
+            // view 草稿编辑态保存成功后，同步刷新明细行（detail 现已返回 line 真实 id），
+            // 使紧随的 refresh() 从最新 crLines 重建 grid：既有行带 _savedId（再编辑走 update），
+            // 编辑期间新增的行也回写真实 id 而非退化成合成 id（否则下次保存又被当 insert）。
+            if (state.mode === 'view') state.crLines = (detail && detail.lines) || state.crLines
+            const docNo = state.crHead.doc_no
+            if (docNo != null && docNo !== '' && state.mode !== 'view') {
+              for (const f of headForms) {
+                const cur = (f && typeof f.getData === 'function') ? f.getData() : null
+                if (cur && Object.prototype.hasOwnProperty.call(cur, 'doc_no')) f.setDataSet({ ...cur, doc_no: String(docNo) })
+              }
+            }
+          } catch (e) { /* 回显失败不阻断保存结果 */ }
+        }
+        // view 草稿编辑态保存（submit=false）成功后，回退到只读查看
+        if (!submit && state.mode === 'view' && state.editing) { state.editing = false; refresh() }
+        // 保存并提交成功后切只读视图：CR 已进审批流不应再改，避免重复点「保存并提交」
+        // 触发 submit 状态校验失败 → cmxError 模态遮罩锁页面。保存草稿保持可编辑（可继续修改）。
+        if (submit) {
+          state.mode = 'view'
+          // 同步 crId：create/update 新建保存并提交后切 view 详情页，doCrAction（提交/通过/驳回/作废）
+          // 读 state.crId；不同步则 !crId 静默 return → 详情页操作无反应（无弹窗/无接口/无报错）。
+          state.crId = crId
+          // 提交后 CR 已进审批流：detail + 流程上下文一起重拉，按钮组（发起人撤回等）与
+          // 流程卡随 approving 态渲染，否则显示"无操作权限/暂无审批记录"的过期内容。
+          await reloadDetail()
+          await reloadFlowCtx()
+          refresh()
+        }
+      } catch (e) {
+        if (e && e.violations && typeof C.formatViolations === 'function') {
+          C.cmxError?.(`数据校验未通过：\n${C.formatViolations(e.violations, TABLE_NAMES)}`)
+        } else {
+          C.cmxError?.(`保存失败：${e.message}`)
+        }
+      }
+    } finally {
+      state.saving = false
+      setWriteBusy(false)
     }
   })
 }
@@ -1117,8 +1161,11 @@ const CR_ACTION_CONFIRM = {
 // confirmFirst=true 前置二次确认（文案取 CR_ACTION_CONFIRM）；needReason=true 从意见框取理由（驳回默认"详情页驳回"）。
 async function doCrAction(act, confirmFirst = false, needReason = false) {
   const C = cmx()
+  if (state.saving) { C.cmxWarn?.('单据操作处理中，请稍候'); return }
   const crId = Number(state.crId)
   if (!crId) { C.cmxWarn?.('单据 id 缺失，无法操作，请重新打开该单据'); return }
+  state.saving = true
+  setWriteBusy(true)
   try {
     if (confirmFirst) {
       const meta = CR_ACTION_CONFIRM[act]
@@ -1141,6 +1188,7 @@ async function doCrAction(act, confirmFirst = false, needReason = false) {
     await reloadFlowCtx()
     refresh()
   } catch (e) { C.cmxError?.(`操作失败：${e.message}`) }
+  finally { state.saving = false; setWriteBusy(false) }
 }
 
 // 状态操作后重新拉详情（doc_status 与表单回显数据源）；刷新由调用方在全部数据就绪后统一执行。
