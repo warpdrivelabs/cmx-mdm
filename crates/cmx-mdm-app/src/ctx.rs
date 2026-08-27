@@ -16,6 +16,14 @@ pub fn current_user_id() -> Option<String> {
         .filter(|u| !u.is_empty())
 }
 
+/// 当前登录用户展示名（AuthContext.username；独立壳由委托令牌 nickname→username→sub 回退
+/// 填充，平台内嵌由 mw_auth 注入 username claim）。发起流程时作 initiatorName 姓名快照来源。
+pub fn current_display_name() -> Option<String> {
+    cmx_traits::auth::context_scope::current_auth()
+        .map(|a| a.username.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// 当前操作人 id（i64 口径，审计列 operated_by 用）；无认证/空/非数字 → 0。
 /// 复刻原 `cmx_api_core::actor::actor_id_i64` 语义（约定 0=系统，保存**永不因身份缺失失败**），
 /// 改走 cmx-traits context_scope。

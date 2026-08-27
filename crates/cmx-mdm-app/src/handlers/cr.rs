@@ -91,8 +91,30 @@ pub async fn mdm_cr_submit(
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer ").map(|t| t.to_string()));
-    let started =
-        crate::flow_client::start_instance(&head, body.cr_id, user_token.as_deref()).await;
+    // 发起人姓名快照：仅当前登录用户 == CR 创建人时取展示名（防代提交错记姓名；
+    // 不一致时变量缺省，展示侧回退 initiator id）。发起即定版，人员改名不影响历史实例。
+    let initiator_name = match head.get("create_by") {
+        Some(v) => {
+            let creator = match v {
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Number(n) => n.to_string(),
+                _ => String::new(),
+            };
+            if crate::ctx::current_user_id().as_deref() == Some(creator.trim()) {
+                crate::ctx::current_display_name()
+            } else {
+                None
+            }
+        }
+        None => None,
+    };
+    let started = crate::flow_client::start_instance(
+        &head,
+        body.cr_id,
+        initiator_name.as_deref(),
+        user_token.as_deref(),
+    )
+    .await;
     let view = match started {
         Ok(v) => v,
         Err(e) => {

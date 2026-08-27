@@ -155,10 +155,15 @@ async fn call_flow(
 
 /// 发起 MDM CR 审批实例：`POST /instances`（bizLink 绑单据坐标）。
 ///
+/// `initiator_name` 为发起人姓名快照（随实例 variables 落 `initiatorName`）——列表/待办中心
+/// 展示发起人直接取值，无需回查用户表；人员改名/删号后历史实例仍显示发起时点姓名。
+/// 传 None 时变量缺省（兼容：展示侧仍可按 initiator id 回查）。
+///
 /// 返回 data（实例视图，含 `tasks` 数组——apply 节点任务从这里取）。
 pub async fn start_instance(
     cr_head: &serde_json::Map<String, Value>,
     cr_id: i64,
+    initiator_name: Option<&str>,
     user_token: Option<&str>,
 ) -> Result<Value, String> {
     let cfg = flow_cfg();
@@ -170,22 +175,26 @@ pub async fn start_instance(
             _ => String::new(),
         }
     };
+    let mut variables = json!({
+        // initiator 必须显式带：撤回护栏 / 「我发起的」过滤按 variables.initiator 判定。
+        "initiator": s("create_by"),
+        "docNo": s("doc_no"),
+        "docType": s("doc_type"),
+        "targetDictCode": s("target_dict_code"),
+        "crType": s("cr_type"),
+        "subjectName": s("subject_name"),
+        // biz 坐标进变量：待办中心 tasks/my 的 bizTable/bizId 投影取自实例变量
+        // （bizLink 表只供反查），不塞则任务打开时业务表单定位不到单据。
+        "bizTable": MDM_BIZ_TABLE,
+        "bizId": cr_id.to_string(),
+    });
+    if let Some(name) = initiator_name.map(str::trim).filter(|s| !s.is_empty()) {
+        variables["initiatorName"] = json!(name);
+    }
     let body = json!({
         "definitionKey": cfg.definition_key,
         "businessKey": s("doc_no"),
-        "variables": {
-            // initiator 必须显式带：撤回护栏 / 「我发起的」过滤按 variables.initiator 判定。
-            "initiator": s("create_by"),
-            "docNo": s("doc_no"),
-            "docType": s("doc_type"),
-            "targetDictCode": s("target_dict_code"),
-            "crType": s("cr_type"),
-            "subjectName": s("subject_name"),
-            // biz 坐标进变量：待办中心 tasks/my 的 bizTable/bizId 投影取自实例变量
-            // （bizLink 表只供反查），不塞则任务打开时业务表单定位不到单据。
-            "bizTable": MDM_BIZ_TABLE,
-            "bizId": cr_id.to_string(),
-        },
+        "variables": variables,
         "bizLink": {
             "bizTable": MDM_BIZ_TABLE,
             "bizId": cr_id.to_string(),

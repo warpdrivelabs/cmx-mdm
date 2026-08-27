@@ -161,12 +161,15 @@ enum Delegated {
 }
 
 /// 委托令牌的 JWT claim（对齐平台 `cmx-auth` AccessClaims：`sub` = user_id、`username` =
-/// 用户名；roles/username 可缺省——缺省时 username 回退 sub，兼容第三方精简令牌）。
+/// 用户名；roles/username/nickname 可缺省——缺省时展示名按 nickname→username→sub 回退，
+/// 兼容旧令牌与第三方精简令牌）。
 #[derive(Debug, Deserialize)]
 struct DelegatedClaims {
     sub: String,
     #[serde(default)]
     username: String,
+    #[serde(default)]
+    nickname: Option<String>,
     #[serde(default)]
     roles: Vec<String>,
 }
@@ -209,11 +212,16 @@ fn delegated_auth(req: &Request, secret: &str) -> Delegated {
     if user_id.is_empty() {
         return Delegated::Anonymous("委托令牌 sub 为空");
     }
-    // username 是操作人姓名展示来源——必须取平台令牌的 username claim（"admin"），
-    // 不能拿 user_id 兜底，否则 created_by/operated_by 类展示全变成雪花 id。
+    // username 是操作人姓名展示来源——优先 nickname（如"张三"），回退 username claim
+    // （"admin"），再回退 user_id。不取姓名兜底 id 会让 created_by/operated_by 类展示变成雪花 id。
     let user_name = {
-        let n = data.claims.username.trim();
-        if n.is_empty() { user_id.clone() } else { n.to_string() }
+        let nick = data.claims.nickname.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        let name = data.claims.username.trim();
+        match (nick, name.is_empty()) {
+            (Some(n), _) => n.to_string(),
+            (None, false) => name.to_string(),
+            (None, true) => user_id.clone(),
+        }
     };
     let auth = AuthContext {
         username: user_name,
