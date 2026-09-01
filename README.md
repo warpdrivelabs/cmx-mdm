@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | **中立核** | `cmx-mdm-app` | 本仓 | 全部 axum handler + `mdm_routes::<S>()` + M5 分发引擎 + M7 流程客户端 + 请求级身份中间件 + native 页自持投递。信封直用 `cmx-api-types`，**零 cmx-api** |
 | **独立壳** | `cmx-mdm-server` | 本仓 | chassis bin（:8095）：merge `mdm_routes::<()>()` + 数据源钩子 + 分发引擎拉起 |
-| **平台壳** | `cmx-mdm-api` | cmx-container | 纯反代：`MdmProxyModule` 把门户 `/api/mdm/*` + `portal.mdm.*` 页取页请求转发到本服务（`[center_client.services].mdm` per-key 定位），前端零改 |
+| **平台壳** | `cmx-mdm-api` | cmx-container | 纯反代：`MdmProxyModule` 把门户 `/api/mdm/*` + `portal.mdm.*` 页取页请求转发到本服务（`[service_rpc.services].mdm` per-key 定位），前端零改 |
 
 域内库：`cmx-mdm-model`（语义中立层）、`cmx-mdm-store-pg`（PG 持久化/服务层）——自 container
 物理迁入，除 workspace 归属外零改。
@@ -36,9 +36,12 @@ curl http://127.0.0.1:8095/api/mdm/health
   mw_auth「内置 + toml 合并」）。认证中间件在 `cmx-mdm-app/src/auth.rs`（轻量自实现 JWT 解码，
   与 flow/rules 同模式——不复用 `cmx-auth` 以免把 sqlx/Redis/argon2 整套平台认证栈拖进编译图）。
 - `[service_auth]`：出站服务身份（回环调门户时携带的 `X-API-Key`）。
-- `[mdm.flow]`：CR 送审流程对接（`loopback_base` 指向门户，经门户反代到 flow-server）。
+- `[mdm.flow]`：CR 送审流程对接（`definition_key` 流程定义键、`webhook_secret` 回调验签密钥、
+  `manual_override_enabled` 人工改派开关）；flow 定位走统一调用目录 `[service_rpc.services].flow`
+  （`cmx-flow-sdk` 直连起实例，不再回环门户）。
 - `[mdm.distribution]`：M5 分发引擎开关与节流参数。
-- `[mdm.notify]`：死信门户通知回环基址（`POST {portal_base}/api/notifications/publish`）。
+- 死信门户通知：走统一调用目录 `[service_rpc.services].portal`（`POST /api/notifications/publish`，
+  出站凭证由 `cmx-service-rpc` 基座注入；原 `[mdm.notify]` 段已删）。
 
 ## 与嵌入时代（原 cmx-mdm-api）的行为对齐
 

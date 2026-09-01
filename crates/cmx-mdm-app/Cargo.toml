@@ -32,6 +32,9 @@ cmx-traits = { workspace = true }
 cmx-database-pg = { workspace = true }
 cmx-core = { workspace = true }
 cmx-utils = { workspace = true }
+cmx-mdm-sdk = { workspace = true }
+cmx-flow-sdk = { workspace = true }
+cmx-service-rpc = { workspace = true }
 cmx-biz = { workspace = true }
 
 # ── Web 框架 + 序列化 ──

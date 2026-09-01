@@ -16,9 +16,7 @@ use axum::Json;
 use axum::body::Bytes;
 use axum::extract::Query;
 use axum::http::HeaderMap;
-use hmac::{Hmac, Mac};
 use serde_json::{Value, json};
-use sha2::Sha256;
 
 use crate::db_id::resolve_db_id;
 use cmx_api_types::{ApiResp, Result};
@@ -34,8 +32,6 @@ use super::cr::CrIdBody;
 /// 懒同步自愈窗口（秒）：approving 且无实例超过该时长才回退 draft——submit 的发起往返
 /// 只占秒级（timeout 上界 10s），5 分钟足够区分「进行中」与「崩溃残留」。
 const LAZY_SYNC_STALE_SECS: i64 = 300;
-
-type HmacSha256 = Hmac<Sha256>;
 
 /// callback 事件预检结果（纯函数可测）。
 #[derive(Debug, PartialEq, Eq)]
@@ -67,22 +63,10 @@ fn classify_callback_event(
     }
 }
 
-/// 验证 flow webhook 签名：`x-cmx-flow-signature: sha256=<hex(HMAC-SHA256(body, secret))>`。
+/// 验证 flow webhook 签名（契约同源：cmx-mdm-sdk 的 [`cmx_mdm_sdk::verify_signature`]，
+/// 与发送方 flow 侧同一实现——常量时间比较，密钥为空 / 头缺失 / 前缀不符均拒绝）。
 fn verify_signature(secret: &str, body: &[u8], sig_header: Option<&str>) -> bool {
-    if secret.is_empty() {
-        // 未配置密钥：拒绝接收（签名即凭证，无密钥等于裸奔）。
-        return false;
-    }
-    let Some(raw) = sig_header else { return false };
-    let Some(hex_sig) = raw.trim().strip_prefix("sha256=") else {
-        return false;
-    };
-    let Ok(mut mac) = HmacSha256::new_from_slice(secret.as_bytes()) else {
-        return false;
-    };
-    mac.update(body);
-    let computed = hex::encode(mac.finalize().into_bytes());
-    computed.eq_ignore_ascii_case(hex_sig.trim())
+    cmx_mdm_sdk::verify_signature(secret, body, sig_header)
 }
 
 /// webhook 回调端点：`POST /api/mdm/flow/callback`。
@@ -524,10 +508,9 @@ pub struct FlowHistoryQuery {
 mod tests {
     use super::*;
 
+    /// 发送方同款签名（cmx-mdm-sdk 契约实现）——测试直接复用。
     fn sign(secret: &str, body: &[u8]) -> String {
-        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
-        mac.update(body);
-        format!("sha256={}", hex::encode(mac.finalize().into_bytes()))
+        cmx_mdm_sdk::signature_header_value(secret, body)
     }
 
     #[test]
