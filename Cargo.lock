@@ -897,6 +897,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmx-flow-sdk"
+version = "0.1.12"
+dependencies = [
+ "async-trait",
+ "cmx-service-rpc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cmx-form"
 version = "0.1.12"
 dependencies = [
@@ -949,9 +959,12 @@ dependencies = [
  "cmx-database-pg",
  "cmx-dct-store-pg",
  "cmx-engine-kit",
+ "cmx-flow-sdk",
  "cmx-form",
  "cmx-mdm-model",
+ "cmx-mdm-sdk",
  "cmx-mdm-store-pg",
+ "cmx-service-rpc",
  "cmx-traits",
  "cmx-utils",
  "dashmap",
@@ -979,6 +992,20 @@ dependencies = [
  "cmx-utils",
  "serde",
  "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "cmx-mdm-sdk"
+version = "0.1.12"
+dependencies = [
+ "async-trait",
+ "cmx-service-rpc",
+ "hex",
+ "hmac 0.12.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
  "tracing",
 ]
 
@@ -1111,12 +1138,31 @@ dependencies = [
  "cmx-core",
  "cmx-database-pg",
  "cmx-registry-config",
+ "cmx-service-rpc",
  "cmx-utils",
  "local-ip-address",
  "serde",
  "thiserror 2.0.20",
  "tokio",
  "toml 0.8.23",
+ "tracing",
+]
+
+[[package]]
+name = "cmx-service-rpc"
+version = "0.1.12"
+dependencies = [
+ "async-trait",
+ "cmx-core",
+ "cmx-registry-config",
+ "cmx-traits",
+ "cmx-utils",
+ "rand 0.8.7",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
  "tracing",
 ]
 
@@ -4178,6 +4224,7 @@ dependencies = [
  "hyper-util",
  "js-sys",
  "log",
+ "mime_guess",
  "percent-encoding",
  "pin-project-lite",
  "quinn",

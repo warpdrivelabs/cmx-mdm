@@ -74,13 +74,11 @@ outgoing_api_key = "cmx_sk_dev_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6"
 
 # ==================== MDM 业务段 ====================
 
-# M7 流程审批（CR 送审走流程平台；loopback_base 指向门户——门户再把 /api/flow/* 反代到 flow-server，
-# 与嵌入式时代"回环本进程"同一拓扑语义；集群指 LB/VIP）
+# M7 流程审批（CR 送审走流程平台；定位与超时在下方 [service_rpc.services.flow]——
+# 直连独立 flow-server（url 直连或 Nacos 服务发现），不再回环绕行门户）
 [mdm.flow]
-loopback_base = "http://127.0.0.1:8080"   # 门户基址（不含 /api）
 definition_key = "mdm_cr_approval"        # 流程定义 key
 webhook_secret = "mdm_flow_hook_dev_secret"   # = flow-server FLOW_WEBHOOK_SIGNING_KEY
-timeout_ms = 10000
 manual_override_enabled = false           # M2 手动端点（approve/reject/activate）开关
 
 # M5 分发引擎（Dispatcher 常驻循环；enabled=false 时仅注册通道不 spawn，端点仍可用）
@@ -95,10 +93,6 @@ backoff_max_ms = 1800000       # 重试退避上限（30min）
 running_reclaim_minutes = 10   # running 残留回收阈值（分钟）
 allow_private_address = true   # webhook 目标允许私网/回环地址（MDM 下游多为内网；外网部署改 false）
 
-# 死信/连续失败门户通知（HTTP 回环门户统一端点，不经 cmx-portal 进程内直调）
-[mdm.notify]
-portal_base = "http://127.0.0.1:8080"   # 门户基址（不含 /api）；不可达时降级 warn 日志不阻塞投递
-
 # —— 页面资产（[assets] 段：引擎自持 native/html 页面投递目录；env 覆盖 ASSETS__UI_NATIVE_DIR/ASSETS__UI_HTML_DIR）——
 # root：定义/字典内容根（cmx-jsonstore 消费：assets.root → ASSETS__ROOT → ./data）。
 # MDM 激活器进程内解析 DCT/DOC 元数据（dict_meta/resolve_dict → meta/definitions 树）依赖此根；
@@ -108,3 +102,17 @@ portal_base = "http://127.0.0.1:8080"   # 门户基址（不含 /api）；不可
 root = "../cmx-container/assets/model/data"
 ui_native_dir = "../cmx-container/assets/mdm/web/ui-native"
 ui_html_dir = "../cmx-container/assets/mdm/web/ui-html"
+
+# ==================== 服务间统一调用目录 ====================
+# （服务键 → 定位 + 传输 + 超时；mdm 的出站：flow 审批调用 / portal 死信通知）
+[service_rpc]
+default_transport = "http"
+nacos_group = "DEFAULT_GROUP"
+timeout_ms = 30000
+retry_max = 1
+
+[service_rpc.services]
+# 审批流程引擎：直连独立 flow-server（timeout 保持 mdm 原回环 10s 语义；缺省全局 30s）
+flow = { url = "http://127.0.0.1:8091", discovery = "cmx-flow-server", timeout_ms = 10000 }
+# 门户：死信/连续失败通知（不可达时降级 warn 不阻塞投递）
+portal = { url = "http://127.0.0.1:8080", discovery = "cmx-portal-local" }

@@ -377,42 +377,22 @@ async fn notify_dead(sub: &Value, event_id: &str, err: &str) {
     }
 }
 
-/// 死信/连续失败门户通知（HTTP 回环）：`{mdm.notify.portal_base}/api/notifications/publish`。
+/// 死信/连续失败门户通知：`POST /api/notifications/publish`（经服务目录键 `portal`）。
 ///
-/// 独立微服务模式：门户通知存储归属门户进程，经 HTTP 回环其统一端点（body 字节对齐
-/// cmx-portal NotifyInput JSON），**避免把门户业务 crate（cmx-portal）拖进 mdm-server 编译图**
-///（cmx-portal 连带 portalservice 整个业务面）。成功 = HTTP 2xx 且信封 `code == 0`
-///（与 flow_client 同一成功判据）；携带 `[service_auth].outgoing_api_key` 作服务身份。
+/// 独立微服务模式：门户通知存储归属门户进程，经基座（`[service_rpc.services].portal` 定位
+/// + 统一鉴权链 + 超时）调用其统一端点（body 字节对齐 cmx-portal NotifyInput JSON），
+/// **避免把门户业务 crate（cmx-portal）拖进 mdm-server 编译图**。成功 = 信封 `code == 0`。
 /// 门户不可达时降级 warn 日志，不阻塞投递主流程。
+///
+/// 路径常量暂随调用方（通知端点属门户对外 API，门户契约 SDK 落地后收编——见方案 §六 #2）。
 async fn portal_notify_publish(input: &Value) -> Result<(), String> {
-    use std::sync::OnceLock;
-
-    use cmx_utils::ConfigManager;
-
-    static CLI: OnceLock<reqwest::Client> = OnceLock::new();
-    let base = ConfigManager::try_global()
-        .and_then(|cm| cm.get_string("mdm.notify.portal_base").ok())
-        .map(|s| s.trim().trim_end_matches('/').to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "http://127.0.0.1:8080".to_string());
-    let url = format!("{base}/api/notifications/publish");
-    let mut rb = CLI
-        .get_or_init(reqwest::Client::new)
-        .post(&url)
+    const NOTIFY_PUBLISH_PATH: &str = "/api/notifications/publish";
+    let req = cmx_service_rpc::RpcRequest::post("portal", NOTIFY_PUBLISH_PATH)
+        .json_body(input.clone())
         .timeout(std::time::Duration::from_millis(10_000));
-    if let Some(key) = crate::flow_client::outgoing_api_key() {
-        rb = rb.header("X-API-Key", key);
-    }
-    let resp = rb.json(input).send().await.map_err(|e| format!("门户不可达: {e}"))?;
-    let status = resp.status();
-    let payload: Value = resp.json().await.map_err(|e| format!("响应解析失败: {e}"))?;
-    if !status.is_success() {
-        return Err(format!("HTTP {status}"));
-    }
-    if payload.get("code").and_then(|c| c.as_i64()) != Some(0) {
-        return Err(format!("业务失败: {}", payload.get("msg").and_then(|m| m.as_str()).unwrap_or("?")));
-    }
-    Ok(())
+    cmx_service_rpc::call_api_unit(req)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 解析默认业务库 id（与 flow_cb 回调同模式；多库路由为已知边界，方案 §十五 Q&D-09 同源）。
