@@ -45,24 +45,7 @@ const PLATFORM_COLS = new Set([
 // 元数据驱动条件下拉上限：filter-bar 行宽有限，多了挤爆。
 const MAX_COND_FIELDS = 4
 
-function unwrap(res, body) {
-  if (body && typeof body === 'object' && typeof body.code === 'number') {
-    if (body.code !== 0) { const e = new Error(body.msg || `业务错误 ${body.code}`); e.body = body; throw e }
-    return body.data
-  }
-  if (!res.ok) { const e = new Error((body && body.error) || `HTTP ${res.status}`); e.status = res.status; throw e }
-  return body
-}
-async function apiPost(url, payload, dbId) {
-  const h = { 'Content-Type': 'application/json', Accept: 'application/json' }; if (dbId) h.db_id = dbId
-  const r = await fetch(url, { method: 'POST', headers: h, credentials: 'same-origin', body: JSON.stringify(payload || {}) })
-  return unwrap(r, await r.json().catch(() => null))
-}
-async function apiGet(url, dbId) {
-  const h = { Accept: 'application/json' }; if (dbId) h.db_id = dbId
-  const r = await fetch(url, { method: 'GET', headers: h, credentials: 'same-origin' })
-  return unwrap(r, await r.json().catch(() => null))
-}
+const { apiGet, apiPost } = globalThis.__cmxDataComp // 共享 fetch 封装（cmx-data-comp/lib/cmx-page-helpers.js；信封解包+结构化错误）
 
 // ── 按 host 隔离的 state（多实例安全）──────────────────────────────────────
 const _hostState = new WeakMap()
@@ -485,8 +468,7 @@ function viewHtml(st) {
       </div>
     </div></div>`
 }
-function esc(s) { return String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])) }
-function escAttr(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])) }
+const { escHtml: esc, escAttr } = globalThis.__cmxDataComp // 共享转义（cmx-data-comp/lib/cmx-page-helpers.js；最严格五字符集合，文本/属性上下文皆安全）
 
 // 列表 grid（元数据列 + 操作列）：仅建列模型与事件（bind 时一次）；
 // 数据填充由 applyData 负责——页面局部更新，不整页重绘（保留输入框文字/焦点/滚动/列宽）。

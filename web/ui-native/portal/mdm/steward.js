@@ -20,24 +20,7 @@
 
 const cmx = () => (typeof globalThis !== 'undefined' && globalThis.__cmxDataComp) || {}
 
-function unwrap(res, body) {
-  if (body && typeof body === 'object' && typeof body.code === 'number') {
-    if (body.code !== 0) { const e = new Error(body.msg || `业务错误 ${body.code}`); e.body = body; throw e }
-    return body.data
-  }
-  if (!res.ok) { const e = new Error((body && body.error) || `HTTP ${res.status}`); e.status = res.status; throw e }
-  return body
-}
-async function apiGet(url, dbId) {
-  const h = { Accept: 'application/json' }; if (dbId) h.db_id = dbId
-  const r = await fetch(url, { headers: h, credentials: 'same-origin' })
-  return unwrap(r, await r.json().catch(() => null))
-}
-async function apiPost(url, payload, dbId) {
-  const h = { 'Content-Type': 'application/json', Accept: 'application/json' }; if (dbId) h.db_id = dbId
-  const r = await fetch(url, { method: 'POST', headers: h, credentials: 'same-origin', body: JSON.stringify(payload || {}) })
-  return unwrap(r, await r.json().catch(() => null))
-}
+const { apiGet, apiPost } = globalThis.__cmxDataComp // 共享 fetch 封装（cmx-data-comp/lib/cmx-page-helpers.js；信封解包+结构化错误）
 
 // 字典坐标四元组（domain/application/module/dbId），来自 ctx.props 或 workspace.context。
 // 仅用于加载 DCT 字典中文名映射；缺失时字典名回退显示 dictCode。
