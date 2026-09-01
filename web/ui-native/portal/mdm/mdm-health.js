@@ -9,19 +9,7 @@
 
 const cmx = () => (typeof globalThis !== 'undefined' && globalThis.__cmxDataComp) || {}
 
-function unwrap(res, body) {
-  if (body && typeof body === 'object' && typeof body.code === 'number') {
-    if (body.code !== 0) { const e = new Error(body.msg || `业务错误 ${body.code}`); e.body = body; throw e }
-    return body.data
-  }
-  if (!res.ok) { const e = new Error((body && body.error) || `HTTP ${res.status}`); e.status = res.status; throw e }
-  return body
-}
-async function apiGet(url, dbId) {
-  const h = { Accept: 'application/json' }; if (dbId) h.db_id = dbId
-  const r = await fetch(url, { headers: h, credentials: 'same-origin' })
-  return unwrap(r, await r.json().catch(() => null))
-}
+const { apiGet } = globalThis.__cmxDataComp // 共享 fetch 封装（cmx-data-comp/lib/cmx-page-helpers.js；信封解包+结构化错误）
 
 const state = { dbId: '', checks: [], stats: null }
 

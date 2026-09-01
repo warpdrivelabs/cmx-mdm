@@ -24,51 +24,9 @@ const cmx = () => (typeof globalThis !== 'undefined' && globalThis.__cmxDataComp
 
 // 轻量 toast（成功/失败反馈，3s 自动消失，免点确定）—— 对齐 registry-center 的提示范式。
 // 仅用于「操作已完成」这类轻反馈；校验警告用 cmxWarn、异常用 cmxError（需用户停下查看）。
-let _toastTimer = null
-function showToast (message, tone = 'ok', duration = 3000) {
-  let el = document.getElementById('cmx-native-toast')
-  if (!el) {
-    el = document.createElement('div')
-    el.id = 'cmx-native-toast'
-    el.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;align-items:center;gap:8px;padding:10px 18px;border-radius:8px;font:500 14px/1.4 var(--sapFontFamily,Arial,sans-serif);box-shadow:0 4px 16px rgba(0,0,0,.16);pointer-events:none;opacity:0;transition:opacity .18s ease'
-    document.body.appendChild(el)
-    const icon = document.createElement('span')
-    icon.style.cssText = 'display:inline-flex;width:16px;height:16px;flex-shrink:0'
-    const text = document.createElement('span')
-    el.appendChild(icon); el.appendChild(text)
-    el._icon = icon; el._text = text
-  }
-  if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null }
-  const isErr = tone === 'err'
-  el.style.color = isErr ? 'var(--sapNegativeTextColor,#b00)' : 'var(--sapPositiveTextColor,#107e3e)'
-  el.style.background = isErr ? 'color-mix(in srgb,#b00 10%,#fff)' : 'color-mix(in srgb,#107e3e 10%,#fff)'
-  el.style.border = `1px solid ${isErr ? 'color-mix(in srgb,#b00 24%,transparent)' : 'color-mix(in srgb,#107e3e 24%,transparent)'}`
-  el._icon.innerHTML = isErr
-    ? '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 12.5A5.5 5.5 0 118 2.5a5.5 5.5 0 010 11zM7.25 4h1.5v5h-1.5V4zm0 6h1.5v1.5h-1.5V10z"/></svg>'
-    : '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm3.4 5.1L7 10.5 4.6 8.1l1-1L7 8.5l3.4-3.4 1 1z"/></svg>'
-  el._text.textContent = String(message ?? '')
-  requestAnimationFrame(() => { el.style.opacity = '1' })
-  _toastTimer = setTimeout(() => { el.style.opacity = '0'; _toastTimer = null }, duration)
-}
+const { showCmxToast } = globalThis.__cmxDataComp // 共享 toast（cmx-data-comp/lib/cmx-toast.js；治理清单 B-05）
 
-function unwrap(res, body) {
-  if (body && typeof body === 'object' && typeof body.code === 'number') {
-    if (body.code !== 0) { const e = new Error(body.msg || `业务错误 ${body.code}`); e.body = body; throw e }
-    return body.data
-  }
-  if (!res.ok) { const e = new Error((body && body.error) || `HTTP ${res.status}`); e.status = res.status; throw e }
-  return body
-}
-async function apiGet(url, dbId) {
-  const h = { Accept: 'application/json' }; if (dbId) h.db_id = dbId
-  const r = await fetch(url, { headers: h, credentials: 'same-origin' })
-  return unwrap(r, await r.json().catch(() => null))
-}
-async function apiPost(url, payload, dbId) {
-  const h = { 'Content-Type': 'application/json', Accept: 'application/json' }; if (dbId) h.db_id = dbId
-  const r = await fetch(url, { method: 'POST', headers: h, credentials: 'same-origin', body: JSON.stringify(payload || {}) })
-  return unwrap(r, await r.json().catch(() => null))
-}
+const { apiGet, apiPost } = globalThis.__cmxDataComp // 共享 fetch 封装（cmx-data-comp/lib/cmx-page-helpers.js；信封解包+结构化错误）
 
 const state = {
   crFields: [], cmFields: [], crLineFields: [], list: [], current: null,
@@ -181,7 +139,7 @@ const CR_TYPES = [
   { value: 'flag_delete', label: 'flag_delete — 标记删除' },
 ]
 
-const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const { escHtml: esc } = globalThis.__cmxDataComp // 共享转义（cmx-data-comp/lib/cmx-page-helpers.js；最严格五字符集合，文本/属性上下文皆安全）
 
 function styleCss() {
   return `
@@ -1078,7 +1036,7 @@ async function save() {
     const cfg = collectForm()
     if (!cfg.source_doc_type || !cfg.target_dict) { M.cmxWarn?.('来源单据类型 / 目标字典 不能为空'); return }
     await apiPost('/api/mdm/activations', cfg, coord && coord.dbId)
-    cloneDirty = false; showToast('保存成功', 'ok'); await loadList(); refresh()
+    cloneDirty = false; showCmxToast('保存成功', { level: 'success' }); await loadList(); refresh()
   } catch (e) { M.cmxError?.(`保存失败：${e.message}`) }
 }
 // 删除当前映射（硬删除，二次确认）。删除后返回空态并刷新侧栏列表。
@@ -1092,7 +1050,7 @@ async function delMapping() {
   if (!ok) return
   try {
     await apiPost('/api/mdm/activations/delete', { activationCode: c.activation_code }, coord && coord.dbId)
-    showToast(`已删除「${c.activation_code}」`, 'ok'); state.current = null; await loadList(); refresh()
+    showCmxToast(`已删除「${c.activation_code}」`, { level: 'success' }); state.current = null; await loadList(); refresh()
   } catch (e) { M.cmxError?.(`删除失败：${e.message}`) }
 }
 // 打开复制对话框：校验当前配置已持久化 → 绑定下拉/确认/取消事件 → 显示。下拉切换实时提示重复覆盖风险。
@@ -1139,7 +1097,7 @@ function doClone(target) {
   const td = state.current.target_dict
   if (td) { loadTargetMeta(td).then(onTargetMetaLoaded).catch(() => {}) }
   refresh()
-  showToast(`已复制为「${target}」配置，检查后请点「保存配置」`, 'ok')
+  showCmxToast(`已复制为「${target}」配置，检查后请点「保存配置」`, { level: 'success' })
 }
 function newMapping() {
   cloneDirty = false

@@ -25,58 +25,12 @@
 const cmx = () => (typeof globalThis !== 'undefined' && globalThis.__cmxDataComp) || {}
 
 // HTML 转义：优先用组件库挂载的权威 escHtml，缺省时本地兜底（覆盖 & < > " '）。
-function esc(s) {
-  const c = cmx()
-  if (c && typeof c.escHtml === 'function') return c.escHtml(s)
-  return String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]))
-}
+const { escHtml: esc } = globalThis.__cmxDataComp // 共享转义（cmx-data-comp/lib/cmx-page-helpers.js；最严格五字符集合，文本/属性上下文皆安全）
 
-function unwrap(res, body) {
-  if (body && typeof body === 'object' && typeof body.code === 'number') {
-    if (body.code !== 0) { const e = new Error(body.msg || body.error || `业务错误 ${body.code}`); e.body = body; throw e }
-    return body.data
-  }
-  if (!res.ok) { const e = new Error((body && (body.msg || body.error)) || `HTTP ${res.status}`); e.status = res.status; throw e }
-  return body
-}
-async function apiGet(url, dbId) {
-  const h = { Accept: 'application/json' }; if (dbId) h.db_id = dbId
-  const r = await fetch(url, { headers: h, credentials: 'same-origin' })
-  return unwrap(r, await r.json().catch(() => null))
-}
-async function apiPost(url, payload, dbId) {
-  const h = { 'Content-Type': 'application/json', Accept: 'application/json' }; if (dbId) h.db_id = dbId
-  const r = await fetch(url, { method: 'POST', headers: h, credentials: 'same-origin', body: JSON.stringify(payload || {}) })
-  return unwrap(r, await r.json().catch(() => null))
-}
+const { apiGet, apiPost } = globalThis.__cmxDataComp // 共享 fetch 封装（cmx-data-comp/lib/cmx-page-helpers.js；信封解包+结构化错误）
 
 // 轻量 toast ——对齐 activation-mapper 提示范式；校验/异常用 cmxWarn/cmxError。
-let _toastTimer = null
-function showToast(message, tone = 'ok', duration = 3000) {
-  let el = document.getElementById('cmx-native-toast')
-  if (!el) {
-    el = document.createElement('div')
-    el.id = 'cmx-native-toast'
-    el.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;align-items:center;gap:8px;padding:10px 18px;border-radius:8px;font:500 14px/1.4 var(--sapFontFamily,Arial,sans-serif);box-shadow:0 4px 16px rgba(0,0,0,.16);pointer-events:none;opacity:0;transition:opacity .18s ease'
-    document.body.appendChild(el)
-    const icon = document.createElement('span')
-    icon.style.cssText = 'display:inline-flex;width:16px;height:16px;flex-shrink:0'
-    const text = document.createElement('span')
-    el.appendChild(icon); el.appendChild(text)
-    el._icon = icon; el._text = text
-  }
-  if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null }
-  const isErr = tone === 'err'
-  el.style.color = isErr ? 'var(--sapNegativeTextColor,#b00)' : 'var(--sapPositiveTextColor,#107e3e)'
-  el.style.background = isErr ? 'color-mix(in srgb,#b00 10%,#fff)' : 'color-mix(in srgb,#107e3e 10%,#fff)'
-  el.style.border = `1px solid ${isErr ? 'color-mix(in srgb,#b00 24%,transparent)' : 'color-mix(in srgb,#107e3e 24%,transparent)'}`
-  el._icon.innerHTML = isErr
-    ? '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 12.5A5.5 5.5 0 118 2.5a5.5 5.5 0 010 11zM7.25 4h1.5v5h-1.5V4zm0 6h1.5v1.5h-1.5V10z"/></svg>'
-    : '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm3.4 5.1L7 10.5 4.6 8.1l1-1L7 8.5l3.4-3.4 1 1z"/></svg>'
-  el._text.textContent = String(message ?? '')
-  requestAnimationFrame(() => { el.style.opacity = '1' })
-  _toastTimer = setTimeout(() => { el.style.opacity = '0'; _toastTimer = null }, duration)
-}
+const { showCmxToast } = globalThis.__cmxDataComp // 共享 toast（cmx-data-comp/lib/cmx-toast.js；治理清单 B-05）
 
 // ── 状态映射（后端 status 全英文，前端统一中文展示）────────────────────────
 const D_STATUS = {
@@ -489,14 +443,14 @@ function openTextDialog(title, text, headHtml) {
   wrap.querySelector('#otCopy')?.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(text)
-      showToast('已复制到剪贴板')
+      showCmxToast('已复制到剪贴板')
     } catch {
       // clipboard API 不可用时的兜底（隐藏 textarea + execCommand）
       const ta = document.createElement('textarea')
       ta.value = text
       ta.style.cssText = 'position:fixed;left:-9999px;top:0;'
       document.body.appendChild(ta); ta.select()
-      try { document.execCommand('copy'); showToast('已复制到剪贴板') } catch { M.cmxError?.('复制失败，请手动选中文本复制') }
+      try { document.execCommand('copy'); showCmxToast('已复制到剪贴板') } catch { M.cmxError?.('复制失败，请手动选中文本复制') }
       ta.remove()
     }
   })
@@ -529,7 +483,7 @@ function openPublishDialog(st) {
       try {
         const d = (await apiPost('/api/mdm/publish', body, st.dbId)) || {}
         const n = Number(d.created) || 0
-        showToast(n > 0 ? `补发完成：已创建 ${n} 条待投递实例` : '没有匹配的事件需要补发（已投递且未勾选 force 的会跳过）')
+        showCmxToast(n > 0 ? `补发完成：已创建 ${n} 条待投递实例` : '没有匹配的事件需要补发（已投递且未勾选 force 的会跳过）')
         refreshActiveTab(currentHostOf(st)).catch(() => {})
         return true
       } catch (e) { M.cmxError?.(`补发失败：${e.message}`); return false }
@@ -612,10 +566,10 @@ async function deadBatch(host, st, kind) {
   try {
     if (kind === 'retry') {
       const d = (await apiPost('/api/mdm/dispatches/retry', { ids }, st.dbId)) || {}
-      showToast(`已重发 ${Number(d.retried) || 0} 条`)
+      showCmxToast(`已重发 ${Number(d.retried) || 0} 条`)
     } else {
       const d = (await apiPost('/api/mdm/dispatches/skip', { ids }, st.dbId)) || {}
-      showToast(`已跳过 ${Number(d.skipped) || 0} 条`)
+      showCmxToast(`已跳过 ${Number(d.skipped) || 0} 条`)
     }
     st.deadSel.clear()
     await Promise.all([loadDead(st), loadStats(st)])

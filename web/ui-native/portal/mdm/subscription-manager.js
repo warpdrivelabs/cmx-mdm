@@ -28,60 +28,13 @@
 const cmx = () => (typeof globalThis !== 'undefined' && globalThis.__cmxDataComp) || {}
 
 // HTML 转义：优先用组件库挂载的权威 escHtml，缺省时本地兜底（覆盖 & < > " '）。
-function esc(s) {
-  const c = cmx()
-  if (c && typeof c.escHtml === 'function') return c.escHtml(s)
-  return String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]))
-}
+const { escHtml: esc } = globalThis.__cmxDataComp // 共享转义（cmx-data-comp/lib/cmx-page-helpers.js；最严格五字符集合，文本/属性上下文皆安全）
 
-function unwrap(res, body) {
-  // 后端错误响应有两种字段名：ApiResp 用 msg，cmx_api_types::Error 用 error；两者都兼容。
-  if (body && typeof body === 'object' && typeof body.code === 'number') {
-    if (body.code !== 0) { const e = new Error(body.msg || body.error || `业务错误 ${body.code}`); e.body = body; throw e }
-    return body.data
-  }
-  if (!res.ok) { const e = new Error((body && (body.msg || body.error)) || `HTTP ${res.status}`); e.status = res.status; throw e }
-  return body
-}
-async function apiGet(url, dbId) {
-  const h = { Accept: 'application/json' }; if (dbId) h.db_id = dbId
-  const r = await fetch(url, { headers: h, credentials: 'same-origin' })
-  return unwrap(r, await r.json().catch(() => null))
-}
-async function apiPost(url, payload, dbId) {
-  const h = { 'Content-Type': 'application/json', Accept: 'application/json' }; if (dbId) h.db_id = dbId
-  const r = await fetch(url, { method: 'POST', headers: h, credentials: 'same-origin', body: JSON.stringify(payload || {}) })
-  return unwrap(r, await r.json().catch(() => null))
-}
+const { apiGet, apiPost } = globalThis.__cmxDataComp // 共享 fetch 封装（cmx-data-comp/lib/cmx-page-helpers.js；信封解包+结构化错误）
 
 // 轻量 toast（成功/失败轻反馈，3s 自动消失）——对齐 activation-mapper 提示范式。
 // 校验警告用 cmxWarn、异常用 cmxError（需用户停下查看）。
-let _toastTimer = null
-function showToast(message, tone = 'ok', duration = 3000) {
-  let el = document.getElementById('cmx-native-toast')
-  if (!el) {
-    el = document.createElement('div')
-    el.id = 'cmx-native-toast'
-    el.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;align-items:center;gap:8px;padding:10px 18px;border-radius:8px;font:500 14px/1.4 var(--sapFontFamily,Arial,sans-serif);box-shadow:0 4px 16px rgba(0,0,0,.16);pointer-events:none;opacity:0;transition:opacity .18s ease'
-    document.body.appendChild(el)
-    const icon = document.createElement('span')
-    icon.style.cssText = 'display:inline-flex;width:16px;height:16px;flex-shrink:0'
-    const text = document.createElement('span')
-    el.appendChild(icon); el.appendChild(text)
-    el._icon = icon; el._text = text
-  }
-  if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null }
-  const isErr = tone === 'err'
-  el.style.color = isErr ? 'var(--sapNegativeTextColor,#b00)' : 'var(--sapPositiveTextColor,#107e3e)'
-  el.style.background = isErr ? 'color-mix(in srgb,#b00 10%,#fff)' : 'color-mix(in srgb,#107e3e 10%,#fff)'
-  el.style.border = `1px solid ${isErr ? 'color-mix(in srgb,#b00 24%,transparent)' : 'color-mix(in srgb,#107e3e 24%,transparent)'}`
-  el._icon.innerHTML = isErr
-    ? '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 12.5A5.5 5.5 0 118 2.5a5.5 5.5 0 010 11zM7.25 4h1.5v5h-1.5V4zm0 6h1.5v1.5h-1.5V10z"/></svg>'
-    : '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm3.4 5.1L7 10.5 4.6 8.1l1-1L7 8.5l3.4-3.4 1 1z"/></svg>'
-  el._text.textContent = String(message ?? '')
-  requestAnimationFrame(() => { el.style.opacity = '1' })
-  _toastTimer = setTimeout(() => { el.style.opacity = '0'; _toastTimer = null }, duration)
-}
+const { showCmxToast } = globalThis.__cmxDataComp // 共享 toast（cmx-data-comp/lib/cmx-toast.js；治理清单 B-05）
 
 // ── 按 host 隔离的 state（多实例安全）──────────────────────────────────────
 const _hostState = new WeakMap()
@@ -303,7 +256,7 @@ async function doAction(host, st, act, row) {
     if (act === 'edit') { openEditDialog(host, st, st.rows.find((r) => Number(r.id) === id) || row) }
     else if (act === 'test') {
       const t = (await apiPost('/api/mdm/subscriptions/test', { id }, st.dbId)) || {}
-      if (t.ok) showToast(`测试通过（${t.latencyMs ?? '-'} ms）`)
+      if (t.ok) showCmxToast(`测试通过（${t.latencyMs ?? '-'} ms）`)
       else M.cmxError?.(`测试失败：${t.detail || '未知原因'}`)
     }
     else if (act === 'enable' || act === 'disable') {
@@ -314,7 +267,7 @@ async function doAction(host, st, act, row) {
       const ok = await M.cmxConfirm?.({ title: to ? '启用订阅' : '停用订阅', message: msg, danger: !to })
       if (ok === false) return
       await apiPost('/api/mdm/subscriptions/set-active', { id, active: to }, st.dbId)
-      showToast(to ? `订阅「${label}」已启用` : `订阅「${label}」已停用`)
+      showCmxToast(to ? `订阅「${label}」已启用` : `订阅「${label}」已停用`)
       await reload(host, st)
     }
     else if (act === 'dispatch') {
@@ -329,7 +282,7 @@ async function doAction(host, st, act, row) {
       })
       if (ok === false) return
       await apiPost('/api/mdm/subscriptions/delete', { id }, st.dbId)
-      showToast(`订阅「${label}」已删除（投递流水已保留）`)
+      showCmxToast(`订阅「${label}」已删除（投递流水已保留）`)
       await reload(host, st)
     }
   } catch (e) { M.cmxError?.(`操作失败：${e.message}`) }
@@ -361,7 +314,7 @@ function openPublishDialog(st, preset) {
       try {
         const d = (await apiPost('/api/mdm/publish', body, st.dbId)) || {}
         const n = Number(d.created) || 0
-        showToast(n > 0 ? `补发完成：已创建 ${n} 条待投递实例` : '没有匹配的事件需要补发（已投递且未勾选 force 的会跳过）')
+        showCmxToast(n > 0 ? `补发完成：已创建 ${n} 条待投递实例` : '没有匹配的事件需要补发（已投递且未勾选 force 的会跳过）')
         return true
       } catch (e) { M.cmxError?.(`补发失败：${e.message}`); return false }
     },
@@ -692,12 +645,12 @@ function openEditDialog(host, st, sub) {
     try {
       const saved = (await apiPost('/api/mdm/subscriptions', r.body, st.dbId)) || {}
       const newId = Number(saved.id) || fm.id
-      if (isNew) showToast(`订阅已创建（#${newId}）。新订阅自新事件起分发，需补投历史请用「补发」`)
-      else showToast('订阅已保存')
+      if (isNew) showCmxToast(`订阅已创建（#${newId}）。新订阅自新事件起分发，需补投历史请用「补发」`)
+      else showCmxToast('订阅已保存')
       if (withTest) {
         try {
           const t = (await apiPost('/api/mdm/subscriptions/test', { id: newId }, st.dbId)) || {}
-          if (t.ok) showToast(`测试通过（${t.latencyMs ?? '-'} ms）`)
+          if (t.ok) showCmxToast(`测试通过（${t.latencyMs ?? '-'} ms）`)
           else M.cmxError?.(`测试失败：${t.detail || '未知原因'}`)
         } catch (e) { M.cmxError?.(`测试失败：${e.message}`) }
       }

@@ -21,50 +21,10 @@
  */
 
 const cmx = () => (typeof globalThis !== 'undefined' && globalThis.__cmxDataComp) || {}
-function unwrap(res, body) {
-  // 后端错误响应有两种字段名：ApiResp 用 msg，cmx_api_types::Error 用 error；两者都兼容。
-  if (body && typeof body === 'object' && typeof body.code === 'number') {
-    if (body.code !== 0) { const e = new Error(body.msg || body.error || `业务错误 ${body.code}`); e.body = body; throw e }
-    return body.data
-  }
-  if (!res.ok) { const e = new Error((body && (body.msg || body.error)) || `HTTP ${res.status}`); e.status = res.status; throw e }
-  return body
-}
-async function apiGet(url, dbId) {
-  const h = { Accept: 'application/json' }; if (dbId) h.db_id = dbId
-  const r = await fetch(url, { headers: h, credentials: 'same-origin' })
-  return unwrap(r, await r.json().catch(() => null))
-}
-async function apiPost(url, payload, dbId) {
-  const h = { 'Content-Type': 'application/json', Accept: 'application/json' }; if (dbId) h.db_id = dbId
-  const r = await fetch(url, { method: 'POST', headers: h, credentials: 'same-origin', body: JSON.stringify(payload || {}) })
-  return unwrap(r, await r.json().catch(() => null))
-}
+const { apiGet, apiPost } = globalThis.__cmxDataComp // 共享 fetch 封装（cmx-data-comp/lib/cmx-page-helpers.js；信封解包+结构化错误）
 
 // 轻量 toast（保存成功等轻反馈，3s 自动消失，对齐 activation-mapper / registry-center 范式）。
-let _toastTimer = null
-function showToast(message, tone = 'ok', duration = 3000) {
-  let el = document.getElementById('cmx-native-toast')
-  if (!el) {
-    el = document.createElement('div'); el.id = 'cmx-native-toast'
-    el.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;align-items:center;gap:8px;padding:10px 18px;border-radius:8px;font:500 14px/1.4 var(--sapFontFamily,Arial,sans-serif);box-shadow:0 4px 16px rgba(0,0,0,.16);pointer-events:none;opacity:0;transition:opacity .18s ease'
-    document.body.appendChild(el)
-    const icon = document.createElement('span'); icon.style.cssText = 'display:inline-flex;width:16px;height:16px;flex-shrink:0'
-    const text = document.createElement('span'); el.appendChild(icon); el.appendChild(text)
-    el._icon = icon; el._text = text
-  }
-  if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null }
-  const isErr = tone === 'err'
-  el.style.color = isErr ? 'var(--sapNegativeTextColor,#b00)' : 'var(--sapPositiveTextColor,#107e3e)'
-  el.style.background = isErr ? 'color-mix(in srgb,#b00 10%,#fff)' : 'color-mix(in srgb,#107e3e 10%,#fff)'
-  el.style.border = `1px solid ${isErr ? 'color-mix(in srgb,#b00 24%,transparent)' : 'color-mix(in srgb,#107e3e 24%,transparent)'}`
-  el._icon.innerHTML = isErr
-    ? '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 12.5A5.5 5.5 0 118 2.5a5.5 5.5 0 010 11zM7.25 4h1.5v5h-1.5V4zm0 6h1.5v1.5h-1.5V10z"/></svg>'
-    : '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm3.4 5.1L7 10.5 4.6 8.1l1-1L7 8.5l3.4-3.4 1 1z"/></svg>'
-  el._text.textContent = String(message ?? '')
-  requestAnimationFrame(() => { el.style.opacity = '1' })
-  _toastTimer = setTimeout(() => { el.style.opacity = '0'; _toastTimer = null }, duration)
-}
+const { showCmxToast } = globalThis.__cmxDataComp // 共享 toast（cmx-data-comp/lib/cmx-toast.js；治理清单 B-05）
 
 // 头表分组渲染样式（前端配置，不存后端）：card=卡片分区 / bar=色条+下分隔线。改此常量切换。
 const HEAD_GROUP_STYLE = 'bar'
@@ -244,7 +204,7 @@ function styleCss() {
   .fh .muted { color:var(--sapContent_LabelColor); font-size:12px; }
   `
 }
-function esc(s) { return String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])) }
+const { escHtml: esc } = globalThis.__cmxDataComp // 共享转义（cmx-data-comp/lib/cmx-page-helpers.js；最严格五字符集合，文本/属性上下文皆安全）
 
 // 办理人显示名：优先服务端姓名快照（nickName 昵称优先 / userName username 口径，
 // 20260827 起随审批意见落库），存量意见行无快照回退 userId。
@@ -412,7 +372,6 @@ function flowHistoryHtml() {
   const DECISION = { approve: '同意', reject: '驳回', return: '退回' }
   const DECISION_TONE = { approve: 'success', reject: 'danger', return: 'warning' }
   const DOT_CLS = { approve: 'fh-dot-approve', reject: 'fh-dot-reject', return: 'fh-dot-return' }
-  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
   // createdAt 为 UTC ISO 串（如 2026-08-18T06:47:58.141116+00:00），须转浏览器本地时区
   // （UTC+8）显示；微秒位超 ES 规范的 3 位毫秒，截断后再交给 Date 解析，非法串原样兜底。
   const fmtCmtTime = (t) => {
@@ -1108,7 +1067,7 @@ function doSave(submit) {
         if (submit && crId != null) {
           await apiPost('/api/mdm/change-requests/submit', { crId }, state.dbId)
         }
-        showToast(submit ? `变更申请 ${crId} 已提交审批` : (isFirstSave ? `已创建变更申请 ${crId}（草稿）` : `变更申请 ${crId} 已更新`))
+        showCmxToast(submit ? `变更申请 ${crId} 已提交审批` : (isFirstSave ? `已创建变更申请 ${crId}（草稿）` : `变更申请 ${crId} 已更新`))
         // 回显后端铸号 doc_no：草稿保存不 refresh（保留用户输入继续编辑），拉详情把 doc_no 写进对应单元格；
         // view 草稿编辑态走下方 refresh 重建，由 headInitialValue 顶层列回退统一回显（二者互补不重复）。
         if (!submit && crId != null) {
