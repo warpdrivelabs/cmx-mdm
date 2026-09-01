@@ -11,10 +11,10 @@
 # - **平台壳** cmx-mdm-proxy（留 cmx-container，M5 新建）：proxy-only 反代到独立壳，前端零改。
 # - 域内库 cmx-mdm-{model,store-pg}（从 container 物理迁入）。
 #
-# ★ 跨 workspace 依赖（本库须与以下两仓并排存在）：
-# - 基础设施 + DCT 数据服务（cmx-core/cmx-database-pg/cmx-dct-store-pg/…）→ 跨 ws path 进 ../cmx-container。
-#   （DCT 激活复用 dict_meta/dict_save_apply，查重读 DictMeta；DCT 不反依赖 MDM，无环。取 container 的
-#   cmx-dct-store-pg 而非 cmx-model 的——见下方 cmx-model-meta 消歧说明。）
+# ★ 跨 workspace 依赖（本库须与 ../cmx-container 并排存在）：
+# - 基础设施 + DCT 数据服务 + 编码引擎（cmx-core/cmx-database-pg/cmx-dct-store-pg/cmx-code-api/…）
+#   → 跨 ws path 进 ../cmx-container。（DCT 激活复用 dict_meta/dict_save_apply，查重读 DictMeta；
+#   DCT 不反依赖 MDM，无环。）
 [workspace]
 resolver = "2"
 members = [
@@ -35,16 +35,14 @@ cmx-mdm-model = { path = "crates/cmx-mdm-model", version = "0.1.12" }
 cmx-mdm-store-pg = { path = "crates/cmx-mdm-store-pg", version = "0.1.12" }
 cmx-mdm-app = { path = "crates/cmx-mdm-app", version = "0.1.12" }
 
-# —— 跨 ws 进 cmx-model（DCT 数据服务，激活/查重复用）——
-# 模型中心（含 DCT）已抽独立 workspace cmx-model，容器内原址 crate 退役。故本库的 cmx-dct-store-pg
-# 取自 cmx-model（单一事实源）。为避免 package collision（cmx-model-meta 经 cmx-portal 与本链两路径
-# 须同源），cmx-portalservice 的 cmx-model-meta 亦已指向 cmx-model 副本——三仓（cmx-model/cmx-mdm/
-# cmx-portalservice）对 cmx-model-meta 全链同源。
-cmx-dct-store-pg = { path = "../cmx-model/crates/cmx-dct-store-pg", version = "0.1.12" }
+# —— 跨 ws 进 cmx-container（DCT 数据服务 + 编码引擎，激活/查重/铸号复用）——
+# 数据运行态 crate 已随第二批阶段三回沉 cmx-container（真源在平台仓集中治理）：
+# cmx-dct-store-pg / cmx-code-api / cmx-model-meta 等全链单源，不再有跨服务仓 path 依赖。
+cmx-dct-store-pg = { path = "../cmx-container/crates/libs/cmx-dct/cmx-dct-store-pg", version = "0.1.12" }
 # 编码引擎（CodeEngine 实现 cmx-traits CodeMinter；cmx_code_rule/seq/gap 三表在业务库）——
 # MDM 激活器进程内铸号（dictMeta.codeRule → mint_dict_code → GlobalCodeMinter）依赖此注入，
 # 与 cmx-model-server 的自注入同源（独立微服务各自注入，见 cmx-mdm-server main.rs）。
-cmx-code-api = { path = "../cmx-model/crates/cmx-code-api", version = "0.1.12" }
+cmx-code-api = { path = "../cmx-container/crates/libs/cmx-code/cmx-code-api", version = "0.1.12" }
 
 
 # —— 跨 ws 进 cmx-container 基础设施 ——
