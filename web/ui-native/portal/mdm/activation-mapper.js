@@ -25,6 +25,7 @@ const cmx = () => (typeof globalThis !== 'undefined' && globalThis.__cmxDataComp
 // 轻量 toast（成功/失败反馈，3s 自动消失，免点确定）—— 对齐 registry-center 的提示范式。
 // 仅用于「操作已完成」这类轻反馈；校验警告用 cmxWarn、异常用 cmxError（需用户停下查看）。
 const { showCmxToast } = globalThis.__cmxDataComp // 共享 toast（cmx-data-comp/lib/cmx-toast.js；治理清单 B-05）
+const { deepClone } = globalThis.__cmxDataComp // 共享深拷贝（cmx-data-comp/lib/cmx-deep-clone.js；审查 B-04）
 
 const { apiGet, apiPost } = globalThis.__cmxDataComp // 共享 fetch 封装（cmx-data-comp/lib/cmx-page-helpers.js；信封解包+结构化错误）
 
@@ -1086,7 +1087,7 @@ function openCloneDlg() {
 // 深拷贝改 cr_type（doc_code_rules 一并复制）→ 进入未保存编辑态（cloneDirty）。
 function doClone(target) {
   const src = state.current
-  const dup = JSON.parse(JSON.stringify(src)) // 配置均为 JSON 可序列化数据，深拷贝安全
+  const dup = deepClone(src) // 配置均为 JSON 可序列化数据，深拷贝安全
   dup.cr_type = target
   dup.activation_code = `${src.source_doc_type}__${target}`
   cloneDirty = true

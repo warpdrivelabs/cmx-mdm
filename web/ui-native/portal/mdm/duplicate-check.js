@@ -22,6 +22,7 @@
 const cmx = () => (typeof globalThis !== 'undefined' && globalThis.__cmxDataComp) || {}
 
 const { apiGet, apiPost } = globalThis.__cmxDataComp // 共享 fetch 封装（cmx-data-comp/lib/cmx-page-helpers.js；信封解包+结构化错误）
+const { deepClone } = globalThis.__cmxDataComp // 共享深拷贝（cmx-data-comp/lib/cmx-deep-clone.js；审查 B-04）
 
 // 中文状态映射（后端 status 全英文，前端统一中文展示）
 const STATUS_CN = {
@@ -605,7 +606,7 @@ function bind(root) {
   })
   // 新建/编辑 → 弹框；删除 → 二次确认
   root.querySelector('#dcRuleNew')?.addEventListener('click', () => openRuleDialog(newBlankRule()))
-  root.querySelector('#dcRuleEdit')?.addEventListener('click', () => { if (state.rule) openRuleDialog(JSON.parse(JSON.stringify(state.rule))) })
+  root.querySelector('#dcRuleEdit')?.addEventListener('click', () => { if (state.rule) openRuleDialog(deepClone(state.rule)) })
   root.querySelector('#dcRuleDel')?.addEventListener('click', () => deleteRule().catch((e) => cmx().cmxError?.(`删除规则失败：${e.message}`)))
   // 候选行点击对比 + 勾选 victim
   root.querySelectorAll('tr[data-cand]').forEach((tr) => {
@@ -888,7 +889,7 @@ async function saveRule() {
   // 兼容旧调用；实际保存逻辑在 openRuleDialog 的 beforeClose 钩子内完成
   const M = cmx()
   if (!state.rule) { M.cmxWarn?.('请先新建或选择规则'); return }
-  openRuleDialog(JSON.parse(JSON.stringify(state.rule)))
+  openRuleDialog(deepClone(state.rule))
 }
 
 async function loadHist() {
