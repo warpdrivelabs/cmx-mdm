@@ -128,7 +128,7 @@ function styleCss() {
   .step-bar .step { display:flex; align-items:center; gap:5px; }
   .step-bar .step .num { display:inline-flex; align-items:center; justify-content:center;
     width:18px; height:18px; border-radius:50%; font-size:11px; font-weight:600;
-    background:var(--neo-cyan,#00b4d8); color:#fff; }
+    background:var(--neo-cyan,#00b4d8); color: #fff; }
   .step-bar .step.done .num { background:var(--sapSuccessBorderColor,#2b7c2b); }
   .step-bar .step.cur .num { background:var(--neo-cyan,#00b4d8); }
   .step-bar .step.pending .num { background:var(--sapNeutralBorderColor,#899191); }

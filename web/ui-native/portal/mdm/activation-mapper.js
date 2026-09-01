@@ -231,7 +231,7 @@ function styleCss() {
     color:var(--neo-cyan,#00b4d8); }
   .sw-wrap { display:inline-flex; align-items:center; gap:8px; font-size:12px; color:var(--sapContent_LabelColor); cursor:pointer; user-select:none; }
   .sw { position:relative; width:38px; height:20px; border-radius:10px; background:var(--neo-green,#2f855a); transition:background .2s; flex-shrink:0; }
-  .sw::after { content:""; position:absolute; top:2px; left:20px; width:16px; height:16px; background:#fff; border-radius:50%; transition:left .2s; box-shadow:0 1px 2px rgba(0,0,0,.25); }
+  .sw::after { content:""; position:absolute; top:2px; left:20px; width:16px; height:16px; background:var(--sapList_Background, #ffffff); border-radius:50%; transition:left .2s; box-shadow:0 1px 2px rgba(0,0,0,.25); }
   .sw.off { background:var(--sapContent_LabelColor); opacity:.55; }
   .sw.off::after { left:2px; }
 
@@ -248,7 +248,7 @@ function styleCss() {
   .card-head { display:flex; align-items:center; justify-content:space-between; padding:11px 16px;
     border-bottom:1px solid var(--sapList_BorderColor); background:color-mix(in srgb,var(--sapBackgroundColor) 75%,#000 0%); }
   .card-head h3 { font-size:13px; font-weight:600; margin:0; display:flex; align-items:center; gap:8px; }
-  .card-head .num { width:18px; height:18px; border-radius:50%; background:var(--neo-cyan,#00b4d8); color:#fff;
+  .card-head .num { width:18px; height:18px; border-radius:50%; background:var(--neo-cyan,#00b4d8); color: #fff;
     font-size:11px; display:inline-flex; align-items:center; justify-content:center; }
   .card-hint { font-size:11px; color:var(--sapContent_LabelColor); }
   .card-body { padding:16px; }
