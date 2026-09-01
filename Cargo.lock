@@ -962,7 +962,6 @@ dependencies = [
  "cmx-flow-sdk",
  "cmx-form",
  "cmx-mdm-model",
- "cmx-mdm-sdk",
  "cmx-mdm-store-pg",
  "cmx-service-rpc",
  "cmx-traits",
@@ -992,20 +991,6 @@ dependencies = [
  "cmx-utils",
  "serde",
  "serde_json",
- "tracing",
-]
-
-[[package]]
-name = "cmx-mdm-sdk"
-version = "0.1.12"
-dependencies = [
- "async-trait",
- "cmx-service-rpc",
- "hex",
- "hmac 0.12.1",
- "serde",
- "serde_json",
- "sha2 0.10.9",
  "tracing",
 ]
 

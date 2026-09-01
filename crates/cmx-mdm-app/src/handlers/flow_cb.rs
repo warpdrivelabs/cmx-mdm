@@ -16,7 +16,9 @@ use axum::Json;
 use axum::body::Bytes;
 use axum::extract::Query;
 use axum::http::HeaderMap;
+use hmac::{Hmac, Mac};
 use serde_json::{Value, json};
+use sha2::Sha256;
 
 use crate::db_id::resolve_db_id;
 use cmx_api_types::{ApiResp, Result};
@@ -63,10 +65,28 @@ fn classify_callback_event(
     }
 }
 
-/// 验证 flow webhook 签名（契约同源：cmx-mdm-sdk 的 [`cmx_mdm_sdk::verify_signature`]，
-/// 与发送方 flow 侧同一实现——常量时间比较，密钥为空 / 头缺失 / 前缀不符均拒绝）。
+/// 验证 flow webhook 签名（HTTP 契约两端各自实现——发送方见 cmx-flowengine 的
+/// cmx-flow-adapters `webhook.rs`，契约文档 flowengine `docs/usage/08` §8.5）：
+/// HMAC-SHA256(body, secret) 常量时间比较；密钥为空 / 头缺失 / 前缀不符均拒绝。
 fn verify_signature(secret: &str, body: &[u8], sig_header: Option<&str>) -> bool {
-    cmx_mdm_sdk::verify_signature(secret, body, sig_header)
+    if secret.is_empty() {
+        // 未配置密钥：拒绝接收（签名即凭证，无密钥等于裸奔）。
+        return false;
+    }
+    let Some(raw) = sig_header else { return false };
+    let Some(hex_sig) = raw.trim().strip_prefix("sha256=") else {
+        return false;
+    };
+    // verify_slice 比较的是二进制 MAC（常量时间），先做 hex 解码。
+    let Ok(expected) = hex::decode(hex_sig.trim()) else {
+        return false;
+    };
+    let mut mac = match Hmac::<Sha256>::new_from_slice(secret.as_bytes()) {
+        Ok(m) => m,
+        Err(_) => return false,
+    };
+    mac.update(body);
+    mac.verify_slice(&expected).is_ok()
 }
 
 /// webhook 回调端点：`POST /api/mdm/flow/callback`。
@@ -508,9 +528,11 @@ pub struct FlowHistoryQuery {
 mod tests {
     use super::*;
 
-    /// 发送方同款签名（cmx-mdm-sdk 契约实现）——测试直接复用。
+    /// 发送方同款签名（HMAC-SHA256 → `sha256=<hex>`，与 flow 侧 `sign_body` 同式对拍）。
     fn sign(secret: &str, body: &[u8]) -> String {
-        cmx_mdm_sdk::signature_header_value(secret, body)
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(body);
+        format!("sha256={}", hex::encode(mac.finalize().into_bytes()))
     }
 
     #[test]
