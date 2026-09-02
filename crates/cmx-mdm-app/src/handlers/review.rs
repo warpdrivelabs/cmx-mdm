@@ -42,6 +42,17 @@ async fn locate_review_task(
     cr_id: i64,
     user: &str,
 ) -> std::result::Result<(String, String, bool), Error> {
+    locate_open_task(cr_id, user, "review", "审批任务不存在或已办结").await
+}
+
+/// [`locate_review_task`] 的泛化：按节点名关键字（contains）找当前实例里未办结的任务。
+/// review 环节传 "review"，退回后的发起人重办环节传 "apply"。
+async fn locate_open_task(
+    cr_id: i64,
+    user: &str,
+    node_contains: &str,
+    not_found_msg: &str,
+) -> std::result::Result<(String, String, bool), Error> {
     // 当前实例 = biz_link 倒序第一条且须 ACTIVE。
     let instances = flow_client::biz_instances(cr_id)
         .await
@@ -55,7 +66,7 @@ async fn locate_review_task(
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_string();
-    // review 任务：实例视图里未办结、节点名含 review（双节点流程的审批环节）。
+    // 目标任务：实例视图里未办结、节点名含关键字的环节（双节点流程 apply/review）。
     let detail = flow_client::instance_detail(&instance_id)
         .await
         .map_err(Error::business_error)?;
@@ -68,9 +79,9 @@ async fn locate_review_task(
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_lowercase();
-            node.contains("review") && !t.get("completed").and_then(|v| v.as_bool()).unwrap_or(false)
+            node.contains(node_contains) && !t.get("completed").and_then(|v| v.as_bool()).unwrap_or(false)
         })
-        .ok_or_else(|| Error::business_error("审批任务不存在或已办结"))?;
+        .ok_or_else(|| Error::business_error(not_found_msg))?;
     let task_id = task
         .get("id")
         .and_then(|v| v.as_str())
@@ -78,7 +89,7 @@ async fn locate_review_task(
         .to_string();
     // 权限：assignee==me，或 me 在候选池（claimable 列表含该任务）。
     let assignee = task.get("assignee").and_then(|v| v.as_str()).unwrap_or("");
-    let can_review = if !assignee.is_empty() {
+    let can = if !assignee.is_empty() {
         assignee == user
     } else if user.is_empty() {
         false
@@ -88,7 +99,7 @@ async fn locate_review_task(
             .map(|ids| ids.contains(&task_id))
             .unwrap_or(false)
     };
-    Ok((instance_id, task_id, can_review))
+    Ok((instance_id, task_id, can))
 }
 
 /// 审批动作统一入口：`POST /api/mdm/change-requests/review`。
@@ -195,6 +206,47 @@ pub async fn mdm_cr_return(
     }))))
 }
 
+/// 退回重办确认：`POST /api/mdm/change-requests/confirm-apply`。
+///
+/// body：`{ "crId": i64 }`
+/// 退回后 apply 任务落回发起人待办（CR 保持 approving）；本端点以发起人身份办结该任务，
+/// 流程继续走 review。无状态回写（办结后仍在审批流中，终态由回写链统一收口）。
+#[utoipa::path(
+    post,
+    path = "/api/mdm/change-requests/confirm-apply",
+    request_body = Value,
+    responses(
+        (status = 200, description = "{ crId, status: \"approving\", instanceId }", body = ApiResp<Value>)
+    ),
+    tag = "MDM主数据接口"
+)]
+pub async fn mdm_cr_confirm_apply(
+    headers: HeaderMap,
+    Json(body): Json<ConfirmApplyBody>,
+) -> Result<Json<ApiResp<Value>>> {
+    // ① 状态校验。
+    let mm = get_default_pg_db_manager();
+    let db_id = resolve_db_id_from_headers(&headers).await;
+    store::check_status(mm, &db_id, None, body.cr_id, "approving").await?;
+    // ② 定位 + 权限（apply 节点：assignee=initiator，候选=initiator）。
+    let user = current_user_id().unwrap_or_default();
+    let (instance_id, task_id, can_apply) =
+        locate_open_task(body.cr_id, &user, "apply", "重办任务不存在或已办结").await?;
+    if !can_apply {
+        return Err(Error::business_error(
+            "您不是该单据当前重办环节的办理人（发起人）",
+        ));
+    }
+    // ④ 办结 apply 任务（幂等：已办结视为成功）。
+    let token = bearer_token(&headers);
+    flow_client::complete_apply_task(&task_id, &instance_id, &user, token.as_deref())
+        .await
+        .map_err(Error::business_error)?;
+    Ok(Json(ApiResp::ok(json!({
+        "crId": body.cr_id, "status": "approving", "instanceId": instance_id,
+    }))))
+}
+
 /// 详情页流程按钮数据源：`GET /api/mdm/change-requests/review-context?crId=`。
 ///
 /// 返回 `{ crId, instanceId, taskId, canReview, canWithdraw, state }`——
@@ -246,11 +298,18 @@ pub async fn mdm_cr_review_context(
     let (instance_id, task_id, can_review) = locate_review_task(q.cr_id, &user)
         .await
         .unwrap_or_default();
+    // 退回后的发起人重办环节（apply 任务开放且当前用户可办）→ 前端渲染「确认并继续」。
+    let (_apply_instance, apply_task_id, can_apply) =
+        locate_open_task(q.cr_id, &user, "apply", "重办任务不存在或已办结")
+            .await
+            .unwrap_or_default();
     Ok(Json(ApiResp::ok(json!({
         "crId": q.cr_id,
         "instanceId": if instance_id.is_empty() { Value::Null } else { json!(instance_id) },
         "taskId": if task_id.is_empty() { Value::Null } else { json!(task_id) },
         "canReview": can_review,
+        "canApply": can_apply,
+        "applyTaskId": if apply_task_id.is_empty() { Value::Null } else { json!(apply_task_id) },
         "canWithdraw": can_withdraw,
         "state": if instance_id.is_empty() { Value::Null } else { json!("ACTIVE") },
     }))))
@@ -294,6 +353,14 @@ pub struct ReturnBody {
     /// 退回目标节点 bpmn id（可选，缺省=直接前驱用户任务）。
     #[serde(default, alias = "targetBpmnId")]
     pub target_bpmn_id: Option<String>,
+}
+
+/// confirm-apply 请求体。
+#[derive(serde::Deserialize)]
+pub struct ConfirmApplyBody {
+    /// CR id。
+    #[serde(alias = "crId")]
+    pub cr_id: i64,
 }
 
 /// review-context 查询。

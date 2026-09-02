@@ -56,6 +56,9 @@ const state = {
   // M7 流程审批态：待办中心经表单绑定打开本页时注入 formMode:'approve'（bizId/taskId/instanceId
   // 随 props；宿主注入的 mode:'task' 被显式忽略——本页 mode 只认 view/update/create）。
   flowApprove: false, taskId: '', instanceId: '',
+  // 退回重办态：apply 节点任务（formMode:'edit' + bizId）——审批被退回打回发起人，
+  // 打开原 CR 只读查看 + 「确认并继续」办结 apply；可编辑修改后保存再确认。
+  flowEdit: false,
   flowHistory: null,           // 分段审批历史（flow-history 接口，流程卡数据源）
   reviewCtx: null,             // M7.1 流程按钮数据源 { canReview, canWithdraw, taskId, instanceId }
   loading: true, loadErr: '',
@@ -304,9 +307,15 @@ function actionPanelHtml() {
     return apCard('操作', `<ui5-button design="Default" icon="save" id="fSave">保存草稿</ui5-button>
       <ui5-button design="Emphasized" icon="paper-plane" id="fSubmit">保存并提交</ui5-button>`) + flow
   }
-  // view 草稿编辑态：保存 / 取消
+  // view 编辑态：保存 / 取消；退回重办（canApply）额外提供「保存并提交」——保存 + 办结发起人
+  // 确认任务一气呵成，发起人改完直接推流程（等价于查看页的 编辑修改→保存→确认并继续）。
   if (mode === 'view' && state.editing) {
-    return apCard('编辑', `<ui5-button design="Emphasized" icon="save" id="fEditSave">保存</ui5-button>
+    const canApply = !!(state.reviewCtx && state.reviewCtx.canApply)
+    const primary = canApply
+      ? `<ui5-button design="Emphasized" icon="paper-plane" id="fConfirmSave">保存并提交</ui5-button>
+      <ui5-button design="Default" icon="save" id="fEditSave">保存</ui5-button>`
+      : `<ui5-button design="Emphasized" icon="save" id="fEditSave">保存</ui5-button>`
+    return apCard('编辑', `${primary}
       <ui5-button design="Transparent" icon="cancel" id="fEditCancel">取消</ui5-button>`) + flow
   }
   // view 非编辑态：按 doc_status 显示对应操作按钮
@@ -342,6 +351,13 @@ function reviewActionsHtml() {
         <ui5-button design="Negative" icon="decline" id="fReviewReject">驳回</ui5-button>
       </div>
       <ui5-button design="Transparent" icon="undo" id="fReviewReturn">退回发起人</ui5-button>`
+  }
+  // 退回重办：apply 任务开放且当前用户（发起人）可办——编辑修改 + 确认继续走流程。
+  if (rc.canApply) {
+    html += `<div class="ap-btn-row">
+        <ui5-button design="Default" icon="edit" id="fEdit">编辑修改</ui5-button>
+        <ui5-button design="Emphasized" icon="accept" id="fConfirmApply">确认并继续</ui5-button>
+      </div>`
   }
   if (rc.canWithdraw) {
     html += `<ui5-button design="Transparent" icon="undo" id="fWithdraw">撤回</ui5-button>`
@@ -914,7 +930,10 @@ function buildHead() {
   const a = state.activation
   const name = (data[state.nameFieldKey] != null ? String(data[state.nameFieldKey]) : '').trim()
   const payload = {}
-  const base = { line_no: 1, doc_status: 'draft', doc_type_id: 1, doc_date: todayStr(), entity_id: 1 }
+  // 新建默认值只随 insert 落库；更新已有单据不带这些列——doc_status 归状态机管，
+  // 编辑保存把 approving/rejected 单覆盖成 draft 会造成「draft+活实例」脱节
+  // （退回单编辑保存即触发：confirm-apply 状态校验失败、再提交被防孤儿拦截）。doc_date 同理不重置。
+  const base = state.savedCrId != null ? {} : { line_no: 1, doc_status: 'draft', doc_type_id: 1, doc_date: todayStr(), entity_id: 1 }
   for (const [src, tgt] of state.headMap) {
     if (src === state.nameFieldKey) continue
     if (SYS_HEAD_FIELDS.has(src)) continue  // 系统字段（状态/单据号）不收集，由状态机/铸号管理
@@ -993,7 +1012,7 @@ function collectLines() {
 }
 
 // 写操作按钮（保存/提交/作废等）：busy 时全部禁用，避免请求在途期间换按钮继续触发。
-const WRITE_BTN_IDS = ['fSave', 'fSubmit', 'fSave2', 'fSubmit2', 'fEditSave', 'fCrSubmit', 'fAbort']
+const WRITE_BTN_IDS = ['fSave', 'fSubmit', 'fSave2', 'fSubmit2', 'fEditSave', 'fCrSubmit', 'fAbort', 'fConfirmApply', 'fConfirmSave']
 /**
  * 写操作 busy 态开关：按钮禁用 + 文案加「…」+ 页面顶部 indeterminate 进度条。
  * off 时对已被 refresh 重建（脱离文档）的按钮跳过恢复——重建后的按钮本就是初始可用态。
@@ -1021,14 +1040,17 @@ function setWriteBusy(on) {
 
 function doSave(submit) {
   const C = cmx()
-  if (state.saving) { C.cmxWarn?.('正在保存/提交中，请稍候'); return }
+  if (state.saving) { C.cmxWarn?.('正在保存/提交中，请稍候'); return false }
   const data0 = collectHeadData()
   const nameVal = (data0[state.nameFieldKey] != null ? String(data0[state.nameFieldKey]) : '').trim()
-  if (!nameVal) { C.cmxWarn?.(`${state.nameCaption}不能为空`); return }
-  if (typeof C.saveDocData !== 'function') { C.cmxError?.('组件库未加载，无法保存'); return }
+  if (!nameVal) { C.cmxWarn?.(`${state.nameCaption}不能为空`); return false }
+  if (typeof C.saveDocData !== 'function') { C.cmxError?.('组件库未加载，无法保存'); return false }
   // 互斥锁在 commitGridEdits 的 rAF 窗口前置位：连点只放行第一次，其余在入口即被拒。
   state.saving = true
   setWriteBusy(true)
+  // 返回 Promise<boolean>（保存成功与否）：「保存并提交」按钮据此决定是否接着办结发起人确认任务；
+  // 其余调用方不取返回值，行为不变。
+  return new Promise((resolve) => {
   // 先收拢未提交的明细行内编辑（失焦/派发 change 触发 revo-grid flush），再构造 changeset 保存
   commitGridEdits(async () => {
     try {
@@ -1036,7 +1058,7 @@ function doSave(submit) {
       // 保存草稿（submit=false）为高频暂存，不加确认以免反复打断录入。
       if (submit) {
         const ok = await C.cmxConfirm?.({ title: '保存并提交', message: '确认保存并提交审批？提交后进入审批流程，单据内容将无法在此页继续修改。', danger: false })
-        if (ok === false) return
+        if (ok === false) { resolve(false); return }
       }
       const changes = {}
       if (state.savedCrId != null) {
@@ -1102,18 +1124,36 @@ function doSave(submit) {
           await reloadFlowCtx()
           refresh()
         }
+        resolve(true)
       } catch (e) {
         if (e && e.violations && typeof C.formatViolations === 'function') {
           C.cmxError?.(`数据校验未通过：\n${C.formatViolations(e.violations, TABLE_NAMES)}`)
         } else {
           C.cmxError?.(`保存失败：${e.message}`)
         }
+        resolve(false)
       }
     } finally {
       state.saving = false
       setWriteBusy(false)
     }
   })
+  })
+}
+
+// 退回重办「保存并提交」：保存修改 → 办结发起人确认任务（confirm-apply）→ 流程继续审批。
+// 保存失败则停在校正后的表单；确认失败不回滚已保存的修改（提示改走查看页「确认并继续」）。
+async function doSaveConfirmApply() {
+  const M = cmx()
+  const saved = await doSave(false)
+  if (!saved) return
+  try {
+    await apiPost('/api/mdm/change-requests/confirm-apply', { crId: Number(state.crId) }, state.dbId)
+    M.cmxInfo?.('已保存并提交，流程继续审批')
+    await reloadDetail()
+    await reloadFlowCtx()
+    refresh()
+  } catch (e) { M.cmxError?.(`确认失败：${e.message}（修改已保存，可在操作区点「确认并继续」重试）`) }
 }
 
 // view 模式单据状态操作的确认文案（提交/通过/驳回/作废）。danger=true 走警示红，用于不可恢复操作。
@@ -1214,6 +1254,7 @@ function bind(root) {
   root.querySelector('#fEdit')?.addEventListener('click', () => { state.editing = true; refresh() })
   root.querySelector('#fEditCancel')?.addEventListener('click', () => { state.deletedLineIds = []; state.editing = false; refresh() })
   root.querySelector('#fEditSave')?.addEventListener('click', () => doSave(false))
+  root.querySelector('#fConfirmSave')?.addEventListener('click', () => doSaveConfirmApply())
   root.querySelector('#fCrSubmit')?.addEventListener('click', () => doCrAction('submit', true))
   root.querySelector('#fAbort')?.addEventListener('click', () => doCrAction('abort', true))
   // M7.1：审批动作业务封装端点（通过/驳回/退回）——流程调用全在 MDM 后端。
@@ -1244,6 +1285,19 @@ function bind(root) {
   root.querySelector('#fReviewApprove')?.addEventListener('click', () => doReviewAction('approve'))
   root.querySelector('#fReviewReject')?.addEventListener('click', () => doReviewAction('reject'))
   root.querySelector('#fReviewReturn')?.addEventListener('click', () => doReviewAction('ret'))
+  // 退回重办确认：办结 apply 任务，流程继续走 review（可先「编辑修改」保存再确认）。
+  root.querySelector('#fConfirmApply')?.addEventListener('click', async () => {
+    const M = cmx()
+    const ok = await M.cmxConfirm?.({ title: '确认继续', message: `确认重报 CR-${state.crId}？流程将从发起人确认继续走审批。`, danger: false })
+    if (ok === false) return
+    try {
+      await apiPost('/api/mdm/change-requests/confirm-apply', { crId: Number(state.crId) }, state.dbId)
+      M.cmxInfo?.('已确认，流程继续审批')
+      await reloadDetail()
+      await reloadFlowCtx()
+      refresh()
+    } catch (e) { M.cmxError?.(`操作失败：${e.message}`) }
+  })
   // M7：发起人撤回（终止当前审批实例 + 回草稿）。
   root.querySelector('#fWithdraw')?.addEventListener('click', async () => {
     const M = cmx()
@@ -1315,8 +1369,9 @@ async function init(tok) {
       state.crType = state.crHead.cr_type || state.crType
       // view 草稿编辑保存走 update 该 CR（复用 doSave 的 savedCrId 分支）
       state.savedCrId = Number(state.crId) || null
-      // autoEdit（修改重提入口）：rejected/draft 原单据直接进编辑态，省去用户再点「编辑」
-      if (state.autoEdit && (state.crHead.doc_status === 'rejected' || state.crHead.doc_status === 'draft')) {
+      // autoEdit（修改重提入口）：rejected/draft 原单据直接进编辑态，省去用户再点「编辑」；
+      // flowEdit（退回重办入口）：approving 退回单同样直接进编辑态——发起人改完「保存并提交」即可。
+      if (state.flowEdit || (state.autoEdit && (state.crHead.doc_status === 'rejected' || state.crHead.doc_status === 'draft'))) {
         state.editing = true
       }
       // M7：已进入流转的单据拉审批历史（流程卡数据源；失败不阻断表单）。
@@ -1363,9 +1418,13 @@ export default {
       state.docType = ctxGet('docType') || p.docType || ''
       state.crType = ctxGet('crType') || p.crType || 'create'
       // M7 审批态（待办中心打开）：formMode=approve + bizId 定位单据，复用 view 只读渲染；
+      // 退回重办态：formMode=edit + bizId（apply 节点任务）——同样走 view 态打开原 CR，
+      // 否则落入 create 分支：props 无 docType → 激活映射按空 docType 匹配 → 「未找到激活映射配置」。
       // 宿主注入的 mode:'task' 显式忽略（'task' 会落入 create 式可编辑渲染）。
-      state.flowApprove = (ctxGet('formMode') || p.formMode) === 'approve'
-      if (state.flowApprove) {
+      const formModeVal = ctxGet('formMode') || p.formMode
+      state.flowApprove = formModeVal === 'approve'
+      state.flowEdit = formModeVal === 'edit' && !!(ctxGet('bizId') || p.bizId)
+      if (state.flowApprove || state.flowEdit) {
         state.crId = ctxGet('bizId') || p.bizId || state.crId
         state.taskId = ctxGet('taskId') || p.taskId || ''
         state.instanceId = ctxGet('instanceId') || p.instanceId || ''
@@ -1375,7 +1434,7 @@ export default {
       // mode：view（只读详情，由 cr-todo 传 crId）/ update（变更，列表台传 target）/ create（新增）
       let modeVal = ctxGet('mode') || p.mode || ''
       if (modeVal === 'task') modeVal = '' // 待办中心宿主标识，非本页模式
-      state.mode = state.flowApprove ? 'view'
+      state.mode = (state.flowApprove || state.flowEdit) ? 'view'
         : (modeVal || (state.crId ? 'view' : (state.crType === 'update' ? 'update' : 'create')))
       state.targetId = ctxGet('targetId') || p.targetId || null
       state.targetName = ctxGet('targetName') || p.targetName || ''

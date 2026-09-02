@@ -70,6 +70,7 @@ where
         .route("/mdm/change-requests/flow-history", get(mdm::flow_cb::mdm_cr_flow_history))
         .route("/mdm/change-requests/review", post(mdm::review::mdm_cr_review))
         .route("/mdm/change-requests/return", post(mdm::review::mdm_cr_return))
+        .route("/mdm/change-requests/confirm-apply", post(mdm::review::mdm_cr_confirm_apply))
         .route("/mdm/change-requests/review-context", get(mdm::review::mdm_cr_review_context))
 }
 
