@@ -59,7 +59,7 @@ const state = {
   // 退回重办态：apply 节点任务（formMode:'edit' + bizId）——审批被退回打回发起人，
   // 打开原 CR 只读查看 + 「确认并继续」办结 apply；可编辑修改后保存再确认。
   flowEdit: false,
-  flowHistory: null,           // 分段审批历史（flow-history 接口，流程卡数据源）
+  flowTrail: null,             // 流程轨迹组件数据（[{instance,definition,comments}] 仅最新一轮实例，见 ftLoad；渲染在 <cmx-flow-trail>）
   reviewCtx: null,             // M7.1 流程按钮数据源 { canReview, canWithdraw, taskId, instanceId }
   loading: true, loadErr: '',
   saving: false,             // 保存/提交/单据操作进行中（互斥锁+busy 态）：防连点并发——首次保存并发会插多条单
@@ -162,7 +162,7 @@ function styleCss() {
   /* view 模式左右分栏：左主内容 + 右固定操作区（操作按钮 + 流程占位） */
   .pg-view { flex-direction:row; align-items:stretch; overflow:hidden; }
   .pg-view .pg-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:10px; overflow:auto; }
-  .action-panel { flex:0 0 240px; display:flex; flex-direction:column; gap:10px; overflow:auto; }
+  .action-panel { flex:0 0 300px; display:flex; flex-direction:column; gap:10px; overflow:auto; } /* 300px 对齐门户属性面板默认宽（--property-width） */
   .ap-card { background:var(--sapList_Background,#fff); border:1px solid var(--sapList_BorderColor,#e0e0e0);
     border-radius:8px; padding:10px 12px; }
   .ap-title { font-size:13px; font-weight:600; color:var(--sapTitleColor); margin-bottom:8px; }
@@ -172,48 +172,11 @@ function styleCss() {
   .ap-hint { font-size:12.5px; color:var(--sapContent_LabelColor); line-height:1.6; }
   .ap-btn-row { display:flex; gap:8px; }
   .ap-btn-row ui5-button { flex:1; }
-  /* M7 审批历史：顶部最新流程状态卡 + 逐轮垂直时间线（节点圆点 + ↓ 连线）。
-     面板窄：节点名/用户/时间/意见逐行竖排，意见 pre-wrap 软换行。 */
+  /* 流程轨迹：<cmx-flow-trail> 组件样式内置 shadow DOM（与待办属性面板同款），页内仅保留容器布局。 */
   .fh { display:flex; flex-direction:column; }
-  .fh-state { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:7px 10px; border-radius:6px; font-size:13px; font-weight:600; }
-  .fh-state .st-dot { width:8px; height:8px; border-radius:50%; flex:none; }
-  .fh-state-success { color:var(--sapSuccessColor,#107e3e); background:var(--sapSuccessBG,#effaf4); }
-  .fh-state-success .st-dot { background:var(--sapSuccessColor,#107e3e); }
-  .fh-state-warning { color:var(--sapWarningColor,#e9730c); background:var(--sapWarningBG,#fef7f0); }
-  .fh-state-warning .st-dot { background:var(--sapWarningColor,#e9730c); }
-  .fh-state-neutral { color:var(--sapContent_LabelColor,#6a6d70); background:var(--sapNeutralBG,#f4f4f4); }
-  .fh-state-neutral .st-dot { background:var(--sapContent_LabelColor,#6a6d70); }
-  .fh-state-biz { font-weight:400; font-size:11.5px; color:var(--sapContent_LabelColor); word-break:break-all; }
-  .fh-round { margin:10px 0 2px; font-size:12.5px; font-weight:600; color:var(--sapTitleColor); }
-  .fh-round .sub { margin-left:6px; font-weight:400; font-size:11.5px; color:var(--sapContent_LabelColor); }
-  .fh-timeline { margin-top:4px; }
-  .fh-node { display:flex; gap:8px; }
-  .fh-rail { display:flex; flex-direction:column; align-items:center; flex:none; width:12px; }
-  .fh-dot { width:10px; height:10px; border-radius:50%; margin-top:4px; flex:none; }
-  .fh-link { width:2px; flex:1 1 auto; min-height:12px; margin-top:2px; border-radius:1px; background:var(--sapList_VerticalBorderColor,#d8d8d8); }
-  .fh-node:last-child .fh-link { display:none; }
-  .fh-dot-submit { background:var(--sapInformationColor,#0a6ed1); }
-  .fh-dot-approve { background:var(--sapSuccessColor,#107e3e); }
-  .fh-dot-reject { background:var(--sapNegativeColor,#bb0000); }
-  .fh-dot-return { background:var(--sapWarningColor,#e9730c); }
-  .fh-dot-pending { width:8px; height:8px; background:transparent; border:2px dashed var(--sapContent_LabelColor,#8a8d90); }
-  .fh-body { flex:1 1 auto; min-width:0; padding-bottom:10px; }
-  .fh-node-hd { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:12.5px; font-weight:600; color:var(--sapTitleColor); }
-  .fh-user { margin-top:2px; font-size:12px; font-weight:600; color:var(--sapTitleColor); word-break:break-all; }
-  .fh-time { display:block; margin-top:2px; color:var(--sapContent_LabelColor); font-size:11.5px; }
-  .fh-comment { margin-top:3px; font-size:12px; color:var(--sapTextColor); white-space:pre-wrap; word-break:break-word; }
-  .fh .muted { color:var(--sapContent_LabelColor); font-size:12px; }
-  .fh-empty { padding:4px 0 6px; }
-  .fh .muted { color:var(--sapContent_LabelColor); font-size:12px; }
   `
 }
 const { escHtml: esc } = globalThis.__cmxDataComp // 共享转义（cmx-data-comp/lib/cmx-page-helpers.js；最严格五字符集合，文本/属性上下文皆安全）
-
-// 办理人显示名：优先服务端姓名快照（nickName 昵称优先 / userName username 口径，
-// 20260827 起随审批意见落库），存量意见行无快照回退 userId。
-function displayUserName (c) {
-  return c.nickName || c.userName || c.userId || '—'
-}
 
 function viewHtml() {
   if (state.loading) return `<div class="pg"><div class="loading">正在加载表单元数据…</div></div>`
@@ -286,16 +249,14 @@ function viewHtml() {
 
 // 右侧操作区：所有非查重页模式统一在此渲染操作按钮（create step2 / update / view 各状态）。
 // 按钮 id 与 doSave/doCrAction 逻辑完全不变，仅 HTML 容器从顶部 bar 移到右侧。
+// 流程轨迹卡（flowTrailHtml 组件）常驻已进流转单据的右栏——20260902 方案修订：取消右侧独立
+// 属性面板，轨迹/状态进表单页；待办办理（flowApprove）与编辑态（含退回重办）都显示。
 function actionPanelHtml() {
   const mode = state.mode
   const apCard = (title, inner) => `<div class="ap-card"><div class="ap-title">${title}</div><div class="ap-actions">${inner}</div></div>`
-  // 流程卡在「已进入流转的单据查看态」展示：view 非编辑 且 非草稿（draft）；审批态（待办打开）也展示。
-  const showFlow = (mode === 'view' && !state.editing && (state.crHead?.doc_status || '') !== 'draft') || state.flowApprove
-  const flow = showFlow ? flowHistoryHtml() : ''
-  // M7.1 审批态（待办中心 console='none' 全屏打开）：操作按钮与详情页同一套（业务封装端点）。
-  if (state.flowApprove) {
-    return reviewPanelHtml(apCard) + flow
-  }
+  // view 态一律显示轨迹卡：撤回回草稿的单据保留已终止轮次轨迹，全新草稿显示「提交后展示」占位；编辑态也保留。
+  const showFlow = mode === 'view'
+  const flow = showFlow ? flowTrailHtml() : ''
   // create step2：上一步 / 保存草稿 / 保存并提交
   if (mode === 'create' && state.step === 2) {
     return apCard('操作', `<ui5-button design="Transparent" icon="navigation-left-arrow" id="fPrev">上一步</ui5-button>
@@ -362,75 +323,309 @@ function reviewActionsHtml() {
   if (rc.canWithdraw) {
     html += `<ui5-button design="Transparent" icon="undo" id="fWithdraw">撤回</ui5-button>`
   }
-  if (!html) html = `<div class="ap-hint">审批中（流程），当前用户无操作权限；可在流程待办中心查看进度。</div>`
+  if (!html) {
+    // 无任何操作权限时的状态化提示：终态单据说"办结/驳回"，避免已办结还显示"审批中"。
+    const st = state.crHead?.doc_status || ''
+    const hint = st === 'activated' ? '流程已办结，单据已激活落字典，无可用操作。'
+      : st === 'rejected' ? '审批已驳回，可编辑修改后重新提交。'
+        : st === 'activating' ? '激活中（流程回写进行中），请稍候刷新。'
+          : '审批中（流程），当前用户无操作权限；可在流程待办中心查看进度。'
+    html = `<div class="ap-hint">${hint}</div>`
+  }
   return html
 }
 
-// 审批态（flowApprove）右侧操作区：同 reviewActionsHtml，标题为「审批」。
-function reviewPanelHtml(apCard) {
-  return apCard('操作', reviewActionsHtml())
+// ── <cmx-flow-trail> 流程轨迹组件（事件流口径，三页共用同一副本）──────────────
+// 20260902 方案修订：取消右侧独立属性面板，流程轨迹+状态直接进表单页。
+// 事件流口径（钉钉/飞书「审批记录」同款）：一条意见一条事件按时间正序铺开，
+// 退回重走同节点出现多次；尾部补当前等待节点+待处理节点；终止实例尾部留终止提示。
+// native-page 跨页不能 import 共享模块（Blob URL 限制），本组件块在
+// mdm/cr-form.js、flow/task-form.js、flow/todo-center.js 各持一份相同副本，
+// customElements.get 守卫保证同文档只注册一次——改任何一份必须同步其余两份。
+// 数据源：/api/mdm/change-requests/flow-history（各实例+意见）+ /api/flow/instances/{id}
+// （tokens/tasks 全量）+ /api/flow/definitions（节点轴）。
+const FT_NODE_KINDS = new Set(['startEvent', 'userTask', 'serviceTask', 'businessRuleTask', 'callActivity', 'subProcess'])
+const FT_KIND_LABELS = { startEvent: '发起', serviceTask: '自动', businessRuleTask: '规则', callActivity: '子流程', subProcess: '子流程' }
+const FT_ACTION_LABELS = { approve: '同意', reject: '驳回', return: '退回', submit: '制单', complete: '办结', transfer: '转签', withdraw: '取回', cancel: '撤销' }
+
+function ftTime (iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return String(iso).replace('T', ' ').slice(0, 16)
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-// 流程审批历史（M7）：顶部=最新实例的流程状态卡；下方=逐轮垂直时间线（节点圆点 + ↓ 连线）。
-// 节点步骤名按 nodeBpmnId 映射（apply=单据提交、review=审批，未识别节点显示原 id），
-// decision（同意/驳回）仅作节点标题旁的辅助徽章；用户/时间/意见逐行竖排（右侧面板窄）。
-// instances 倒序（最新在前）；进行中实例在时间线末尾补「等待办理」占位节点。
-function flowHistoryHtml() {
-  const insts = (state.flowHistory && state.flowHistory.instances) || []
-  if (!insts.length) {
-    return `<div class="ap-card"><div class="ap-title">流程</div>
-      <cmx-empty-state icon="process" title="暂无审批记录" description="提交后此处展示流程进度与审批历史"></cmx-empty-state></div>`
+function ftActor (row) {
+  // 优先按 userId 查用户快照统一显示名：意见记录里的 nickName 是写入时的昵称快照，
+  // 同一用户改过昵称后新旧意见会显示成两个名字，看起来像两个人的重复操作。
+  const uid = row?.userId ?? row?.user_id
+  if (uid != null && String(uid) && globalThis.__cmxFlowUsers && globalThis.__cmxFlowUsers[String(uid)]) {
+    return ftUserName(uid)
   }
-  const FLOW_STATE = { ACTIVE: ['进行中', 'warning'], COMPLETED: ['已审结', 'success'], TERMINATED: ['已终止', 'neutral'] }
-  const NODE_LABEL = { apply: '单据提交', review: '审批' }
-  // decision 落库值全集：complete 透传（approve/reject）+ return 端点固定 "return"（退回发起人）。
-  // 未映射的新值兜底显示原串 + 中性色，避免像 return 一样漏译。
-  const DECISION = { approve: '同意', reject: '驳回', return: '退回' }
-  const DECISION_TONE = { approve: 'success', reject: 'danger', return: 'warning' }
-  const DOT_CLS = { approve: 'fh-dot-approve', reject: 'fh-dot-reject', return: 'fh-dot-return' }
-  // createdAt 为 UTC ISO 串（如 2026-08-18T06:47:58.141116+00:00），须转浏览器本地时区
-  // （UTC+8）显示；微秒位超 ES 规范的 3 位毫秒，截断后再交给 Date 解析，非法串原样兜底。
-  const fmtCmtTime = (t) => {
-    if (!t) return ''
-    const d = new Date(String(t).replace(/(\.\d{3})\d+/, '$1'))
-    if (Number.isNaN(d.getTime())) return String(t)
-    const p = (n) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+  return row?.nickName || row?.userName || row?.nickname || row?.username || String(uid ?? '') || row?.assignee || '—'
+}
+
+// 任务 assignee 是数字 id，经用户快照（/api/iam/users/list）换显示名；与 task-form 共用
+// globalThis.__cmxFlowUsers 缓存口径（已加载则直接复用，不重复拉）。
+function ftUserName (id) {
+  const u = globalThis.__cmxFlowUsers && globalThis.__cmxFlowUsers[String(id)]
+  return (u && (u.nickName || u.userName)) || String(id)
+}
+
+// 用户快照兜底拉取（调用期解析请求器：三页副本字节级一致，不依赖各页模块顶层解构）；
+// 各页自有 loadUserSnapshots 已填充 __cmxFlowUsers 时直接复用，不重复拉。
+async function ftUsers () {
+  try {
+    if (globalThis.__cmxFlowUsers && Object.keys(globalThis.__cmxFlowUsers).length) return
+    const post = globalThis.__cmxDataComp && globalThis.__cmxDataComp.apiPost
+    if (!post) return
+    const rows = await post('/api/iam/users/list', { pageSize: 200 })
+    const map = {}
+    for (const u of (Array.isArray(rows) ? rows : (rows && rows.items) || [])) {
+      const id = String((u && (u.id ?? u.userId ?? u.user_id)) ?? '')
+      if (id) map[id] = { nickName: (u && (u.nickName || u.nickname)) || '', userName: (u && (u.userName || u.username)) || '' }
+    }
+    globalThis.__cmxFlowUsers = map
+  } catch { /* 快照不可用时回退显示原始 id */ }
+}
+
+function ftAction (row) {
+  const raw = String(row?.decision ?? '').trim()
+  const key = raw.toLowerCase()
+  if (key && FT_ACTION_LABELS[key]) return { key, label: FT_ACTION_LABELS[key], tone: key === 'reject' ? 'rej' : (key === 'return' || key === 'withdraw' ? 'warn' : 'ok') }
+  if (key) return { key, label: raw, tone: 'ok' }
+  const isCreation = key === '' && (String(row?.nodeBpmnId || '') === 'apply' || String(row?.nodeBpmnId || '') === 'start')
+  return isCreation ? { key: 'submit', label: '制单', tone: 'ok' } : { key: 'complete', label: '办理', tone: 'ok' }
+}
+
+function ftComment (row) {
+  const action = ftAction(row)
+  const text = String(row?.comment ?? '').trim()
+  return {
+    nodeId: String(row?.nodeBpmnId || ''),
+    actor: ftActor(row),
+    action,
+    text: text || (action.key === 'submit' ? '制单提交' : '（未填写意见）'),
+    time: ftTime(row?.createdAt),
+    createdAt: row?.createdAt || '',
   }
-  const latest = insts[0]
-  const [lsName, lsTone] = FLOW_STATE[latest.state] || [latest.state || '—', 'neutral']
-  const stateCard = `<div class="fh-state fh-state-${lsTone}"><span class="st-dot"></span><span>${esc(lsName)}</span>
-    <span class="fh-state-biz">${esc(latest.businessKey || latest.instanceId || '')}</span></div>`
-  const secs = insts.map((inst, i) => {
-    const [stName] = FLOW_STATE[inst.state] || [inst.state || '—', 'neutral']
-    // 多轮（驳回重提）才显示轮次头；单轮时状态已在顶部卡，不重复
-    const round = insts.length > 1 ? `<div class="fh-round">第 ${insts.length - i} 轮<span class="sub">${esc(stName)}</span></div>` : ''
-    // 进行中实例的时间线末梢占位：退回场景提示等待发起人重提，其余提示等待办理
-    const cs = inst.comments || []
-    const lastDecision = cs.length ? cs[cs.length - 1].decision : ''
-    const pendingText = lastDecision === 'return' ? '已退回，等待发起人修改重提…' : '等待办理中…'
-    const pendingNode = `<div class="fh-node"><div class="fh-rail"><span class="fh-dot fh-dot-pending"></span></div>
-      <div class="fh-body"><div class="fh-node-hd muted">${esc(pendingText)}</div></div></div>`
-    const nodes = (inst.comments || []).map((c) => {
-      const d = c.decision ? (DECISION[c.decision] || c.decision) : ''
-      const tone = DECISION_TONE[c.decision] || 'neutral'
-      const dotCls = DOT_CLS[c.decision] || 'fh-dot-submit'
-      return `<div class="fh-node">
-        <div class="fh-rail"><span class="fh-dot ${dotCls}"></span><span class="fh-link"></span></div>
-        <div class="fh-body">
-          <div class="fh-node-hd">${esc(NODE_LABEL[c.nodeBpmnId] || c.nodeBpmnId || '办理')}${d ? `<cmx-status-tag tone="${tone}" variant="subtle" dot size="sm">${esc(d)}</cmx-status-tag>` : ''}</div>
-          <div class="fh-user">${esc(displayUserName(c))}</div>
-          <div class="fh-time">${esc(fmtCmtTime(c.createdAt))}</div>
-          ${c.comment ? `<div class="fh-comment">${esc(c.comment)}</div>` : ''}
-        </div>
-      </div>`
-    }).join('')
-    let tail = ''
-    if (!nodes) tail = inst.state === 'ACTIVE' ? pendingNode : '<div class="fh-empty muted">暂无办理记录</div>'
-    else if (inst.state === 'ACTIVE') tail = pendingNode
-    return `${round}<div class="fh-timeline">${nodes}${tail}</div>`
-  }).join('')
-  return `<div class="ap-card"><div class="ap-title">审批历史</div><div class="fh">${stateCard}${secs}</div></div>`
+}
+
+// 事件流轨迹构建（20260902 三次修订定稿）：与钉钉/飞书「审批记录」同口径——时间正序铺开
+// 每次实际发生的事件（一条意见 = 一条），退回重走同一节点出现多次；「发起」为人造首条
+// （发起人 + 发起时刻取首条意见）。尾部补节点轴当前态：当前等待节点（未办任务办理人）→
+// 待重走/未到达节点（待处理）；TERMINATED 实例尾部不补节点、由时间线末尾终止提示交代。
+// 节点轴口径（每节点一行挂意见卡）保留在 task-form 属性面板，两者视图职责不同。
+function ftBuildEvents ({ instance, definition, comments }) {
+  const inst = instance || {}
+  const activeIds = new Set([
+    ...((inst.tokens || []).filter((x) => String(x?.state || '') !== 'ENDED').map((x) => String(x.nodeBpmnId || ''))),
+    ...((inst.activeNodes || []).map((x) => String(x || ''))),
+  ].filter(Boolean))
+  const tasks = inst.tasks || []
+  const completedIds = new Set(tasks.filter((x) => x.completed).map((x) => String(x.nodeBpmnId || '')).filter(Boolean))
+  const observedIds = new Set([...activeIds, ...completedIds])
+
+  // 节点轴（取名称/种类/后续待处理判定用）：定义优先，兜底任务观察到的节点。
+  let nodes = []
+  if (Array.isArray(definition?.nodes) && definition.nodes.length) {
+    nodes = definition.nodes
+      .filter((n) => FT_NODE_KINDS.has(String(n?.kind || '')) || observedIds.has(String(n?.id || '')))
+      .map((n) => {
+        const kind = String(n?.kind || '')
+        return { id: String(n.id || ''), kind, name: n.name || (kind === 'startEvent' ? '发起' : '') || String(n.id || '') }
+      })
+  } else {
+    const seen = new Set()
+    nodes = tasks
+      .map((x) => ({ id: String(x.nodeBpmnId || ''), name: x.name || x.nodeBpmnId, kind: 'userTask' }))
+      .filter((n) => n.id && !seen.has(n.id) && seen.add(n.id))
+  }
+  for (const id of observedIds) {
+    if (nodes.some((n) => n.id === id)) continue
+    nodes.push({ id, name: tasks.find((x) => String(x.nodeBpmnId || '') === id)?.name || id, kind: 'userTask' })
+  }
+  const nameOf = (id) => { const n = nodes.find((x) => x.id === id); return (n && n.name) || id }
+
+  const normalized = (comments || []).map((c) => ftComment(c)).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+
+  // ① 已发生事件：发起（人造首条）→ 逐条意见正序铺开（含未知节点名的意见，名称兜底 nodeId）。
+  const events = []
+  const first = normalized[0] || null
+  if (first) events.push({ type: 'event', title: '发起', action: null, actor: first.actor, time: first.time })
+  for (const c of normalized) events.push({ type: 'event', title: nameOf(c.nodeId), action: c.action, actor: c.actor, time: c.time, text: c.text })
+
+  // ② 尾部当前态（仅非终态实例）：当前等待节点 → 待重走/未到达节点（终局完成的不重复列）。
+  const instanceTerminal = ['COMPLETED', 'TERMINATED'].includes(String(inst.state || ''))
+  if (!instanceTerminal) {
+    const adj = new Map()
+    for (const e of (Array.isArray(definition?.edges) ? definition.edges : [])) {
+      const from = String(e?.from || ''); const to = String(e?.to || '')
+      if (!from || !to) continue
+      if (!adj.has(from)) adj.set(from, [])
+      adj.get(from).push(to)
+    }
+    const reachCache = new Map()
+    const reachFrom = (start) => {
+      if (!reachCache.has(start)) {
+        const seen = new Set(); const queue = (adj.get(start) || []).slice()
+        while (queue.length) {
+          const cur = queue.pop()
+          if (seen.has(cur)) continue
+          seen.add(cur)
+          for (const nx of (adj.get(cur) || [])) queue.push(nx)
+        }
+        reachCache.set(start, seen)
+      }
+      return reachCache.get(start)
+    }
+    // 活跃节点可达它 = 它被退回、还要重走（hasActiveUpstream 口径与旧节点轴一致）。
+    const willRevisit = (id) => nodes.some((n) => n.id !== id && activeIds.has(n.id) && reachFrom(n.id).has(id))
+    for (const n of nodes) {
+      if (n.kind === 'startEvent') continue
+      if (activeIds.has(n.id)) {
+        const actors = Array.from(new Set(tasks.filter((x) => String(x.nodeBpmnId || '') === n.id && !x.completed)
+          .map((x) => ftUserName(x.assignee || x.ownerUserId)).filter(Boolean)))
+        events.push({ type: 'current', title: n.name, actors, kindLabel: FT_KIND_LABELS[n.kind] || '' })
+      } else if (!(completedIds.has(n.id) && !willRevisit(n.id))) {
+        // 未到过、或办结过但被退回将重走 → 待处理（已出过事件的节点也再列一行表示将来还要走）。
+        events.push({ type: 'pending', title: n.name, kindLabel: FT_KIND_LABELS[n.kind] || '' })
+      }
+    }
+  }
+  return { events, terminated: String(inst.state || '') === 'TERMINATED' }
+}
+
+let ftDefCache = null
+async function ftDefinition (key) {
+  if (ftDefCache && ftDefCache[key]) return ftDefCache[key]
+  try {
+    const d = await apiGet('/api/flow/definitions')
+    ftDefCache = {}
+    for (const item of (d && d.definitions) || []) ftDefCache[item.key] = item
+  } catch { ftDefCache = ftDefCache || {} }
+  return (ftDefCache && ftDefCache[key]) || null
+}
+
+// 轨迹数据加载：flow-history（实例+意见，倒序）→ 只取最新一轮实例补全量 tokens/tasks。
+// 与待办属性面板同口径：不拆历史轮次（驳回/撤回重提的旧实例审批意见不展示）。
+// 失败降级为空数组（卡片显示暂无流转记录），不阻断表单。
+async function ftLoad () {
+  if (state.crId == null) { state.flowTrail = null; return }
+  await ftUsers()
+  try {
+    const fh = await apiGet(`/api/mdm/change-requests/flow-history?crId=${state.crId}`, state.dbId)
+    const inst = ((fh && fh.instances) || [])[0]
+    const trail = []
+    if (inst && inst.instanceId) {
+      const full = await apiGet(`/api/flow/instances/${encodeURIComponent(inst.instanceId)}`).catch(() => null)
+      const definitionKey = (full && full.definitionKey) || 'mdm_cr_approval'
+      const definition = await ftDefinition(definitionKey)
+      trail.push({ instance: full, definition, comments: inst.comments || [] })
+    }
+    state.flowTrail = trail
+  } catch (e) { console.warn('[cr-form] 流程轨迹加载失败', e); state.flowTrail = state.flowTrail || [] }
+}
+
+// ── <cmx-flow-trail> 流程轨迹组件 ──────────────────────────────────────────
+// 与 flow/todo-center 属性面板的轨迹视图同款样式、同一视图模型口径（allnodes）。
+// 用法：el.trail = { instance, definition, comments }（instance=流程实例全量含 tokens/tasks），
+// 组件内部完成步骤构建（当前/已完成/待处理/未经过、退回打回识别）与渲染，纯呈现无取数。
+// native-page 跨页不能 import 共享模块（Blob URL 限制），按「内联副本+同步注释」约定与
+// flow 侧各持一份；customElements.get 守卫保证同文档只注册一次，两份代码须保持一致。
+class CmxFlowTrail extends HTMLElement {
+  set trail (data) { this._data = data; if (this.isConnected) this._render() }
+  get trail () { return this._data }
+  connectedCallback () {
+    if (!this.shadowRoot) this.attachShadow({ mode: 'open' })
+    this._render()
+  }
+  _render () {
+    const root = this.shadowRoot
+    if (!root) return
+    const d = this._data || {}
+    const built = ftBuildEvents({ instance: d.instance || {}, definition: d.definition, comments: d.comments || [] })
+    root.innerHTML = `<style>${this.css()}</style>${this.html(built)}`
+  }
+  // 事件流视图：时间正序铺开每次事件（节点名+动作徽标+办理人+时间+意见），
+  // 尾部补当前等待节点与待处理节点；不渲染头部/摘要（表单页自身已有单据号与状态）。
+  html (built) {
+    const row = (e, i) => {
+      const num = `<span class="step">${String(i + 1)}</span>`
+      if (e.type === 'event') {
+        return `<li class="node done"><div class="rail"><span class="step"><ui5-icon name="accept"></ui5-icon></span></div>
+          <div class="body">
+            <div class="title"><b>${esc(e.title)}</b>${e.action ? `<span class="dec ${e.action.tone}">${esc(e.action.label)}</span>` : ''}</div>
+            <div class="meta">${e.actor ? `<span>${esc(e.actor)}</span>` : ''}${e.time ? `<span>${esc(e.time)}</span>` : ''}</div>
+            ${e.text && e.text !== '（未填写意见）' ? `<div class="cmt"><div class="cmt-bd">${esc(e.text)}</div></div>` : ''}
+          </div></li>`
+      }
+      if (e.type === 'current') {
+        return `<li class="node current"><div class="rail">${num}</div>
+          <div class="body">
+            <div class="title"><b>${esc(e.title)}</b>${e.kindLabel ? `<span class="kind">${esc(e.kindLabel)}</span>` : ''}<span class="st">当前</span></div>
+            ${(e.actors && e.actors.length) ? `<div class="meta"><span class="actors">办理人：${e.actors.map((x) => esc(x)).join('、')}</span></div>` : ''}
+          </div></li>`
+      }
+      return `<li class="node pending"><div class="rail">${num}</div>
+        <div class="body"><div class="title"><b>${esc(e.title)}</b>${e.kindLabel ? `<span class="kind">${esc(e.kindLabel)}</span>` : ''}<span class="st">待处理</span></div></div></li>`
+    }
+    const rows = built.events.map(row).join('')
+    const termHint = built.terminated ? '<div class="hint">流程已终止，后续节点未执行</div>' : ''
+    return built.events.length ? `<ol class="flow">${rows}</ol>${termHint}` : '<div class="hint">暂无流转记录</div>'
+  }
+  css () {
+    return `
+    :host { display:block; --t-brand: var(--sapButton_Emphasized_Background, var(--sapBrandColor, #0070f2));
+      --t-brand-text: var(--sapButton_Emphasized_TextColor, var(--sapContent_ContrastTextColor, var(--sapBaseColor, #fff)));
+      --t-ok: var(--sapSuccessColor, #107e3e); --t-warn: var(--sapWarningColor, #e9730c);
+      --t-neg: var(--sapNegativeColor, #bb0000);
+      --t-ink: var(--sapTextColor, var(--sapTitleColor, #32363a)); --t-muted: var(--sapContent_LabelColor, #6a6d70);
+      --t-line: var(--sapList_BorderColor, #d8d8d8); --t-tile: var(--sapBaseColor, #ffffff); }
+    .flow { list-style:none; margin:0; padding:0; }
+    .node { display:grid; grid-template-columns:32px minmax(0,1fr); gap:0 10px; padding-bottom:14px; }
+    .rail { position:relative; display:flex; justify-content:center; }
+    .step { width:26px; height:26px; display:grid; place-items:center; border-radius:50%; border:1px solid var(--t-line);
+      background:var(--t-tile); color:var(--t-muted); font-size:11.5px; font-weight:700; }
+    .step ui5-icon { width:.85rem; height:.85rem; }
+    .node:not(:last-of-type) .rail::after { content:""; position:absolute; top:30px; bottom:0; width:2px;
+      background:color-mix(in srgb, var(--t-muted) 32%, transparent); }
+    .node.done:not(:last-of-type) .rail::after { background:color-mix(in srgb, var(--t-ok) 58%, transparent); }
+    .node.done .step { color:var(--t-ok); border-color:color-mix(in srgb, var(--t-ok) 48%, var(--t-line)); }
+    .node.current .step { color:var(--t-brand-text); border-color:var(--t-brand); background:var(--t-brand); }
+    .node.pending .step { background:color-mix(in srgb, var(--t-muted) 4%, var(--t-tile)); }
+    .body { min-width:0; padding-top:3px; }
+    .title { display:flex; align-items:baseline; gap:8px; min-width:0; }
+    .title b { flex:1 1 auto; min-width:0; font-size:13px; font-weight:600; color:var(--t-ink); overflow-wrap:anywhere; }
+    .node.pending .title b { color:var(--t-muted); }
+    .node.current .title b { color:var(--t-brand); font-weight:700; }
+    .st { flex:none; font-size:10.5px; font-weight:600; color:var(--t-muted); white-space:nowrap; }
+    .node.done .st { color:var(--t-ok); }
+    .node.current .st { color:var(--t-brand); }
+    .kind { flex:none; align-self:center; font-size:10px; font-weight:600; color:var(--t-muted);
+      border:1px solid color-mix(in srgb, var(--t-muted) 45%, transparent); border-radius:999px; padding:1px 7px; white-space:nowrap; }
+    .meta { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; margin-top:3px; font-size:10.5px; color:var(--t-muted); }
+    .actors { overflow-wrap:anywhere; }
+    .cmt { margin-top:6px; padding:6px 9px; border-radius:7px; background:color-mix(in srgb, var(--t-muted) 6%, var(--t-tile));
+      border:1px solid color-mix(in srgb, var(--t-muted) 10%, transparent); }
+    .dec { flex:none; font-size:10.5px; font-weight:700; }
+    .dec.ok { color:var(--t-ok); } .dec.warn { color:var(--t-warn); } .dec.rej { color:var(--t-neg); }
+    .cmt-bd { font-size:11.5px; color:var(--t-ink); white-space:pre-wrap; word-break:break-word; }
+    .hint { font-size:12px; color:var(--t-muted); padding:6px 0; }
+    `
+  }
+}
+if (!customElements.get('cmx-flow-trail')) customElements.define('cmx-flow-trail', CmxFlowTrail)
+
+// 流程轨迹卡：单挂最新一轮实例的 <cmx-flow-trail>（纯时间线，无头部/摘要——表单页已有单据号与状态；卡标题保留）。
+// 渲染是静态占位，数据在 bind() 里回填（el.trail = ...）。
+function flowTrailHtml () {
+  if (!state.flowTrail || !state.flowTrail.length) {
+    return `<div class="ap-card"><div class="ap-title">流程轨迹</div>
+      <cmx-empty-state icon="process" title="暂无流转记录" description="提交后此处展示流程进度与审批轨迹"></cmx-empty-state></div>`
+  }
+  return `<div class="ap-card"><div class="ap-title">流程轨迹</div><div class="fh"><cmx-flow-trail></cmx-flow-trail></div></div>`
 }
 
 // ── 元数据加载 ──────────────────────────────────────────────────────────────
@@ -1188,7 +1383,7 @@ async function doCrAction(act, confirmFirst = false, needReason = false) {
     const msgMap = { submit: '已提交审批', abort: '已作废' }
     C.cmxInfo?.(`CR-${crId} ${msgMap[act] || '操作成功'}`)
     // 提交/作废会改变流程状态与操作权限：detail + 流程上下文都要重拉，
-    // 否则按钮区/流程卡仍按旧 reviewCtx/flowHistory 渲染（如提交后误显示"无操作权限"）。
+    // 否则按钮区/轨迹卡仍按旧 reviewCtx/flowTrail 渲染（如提交后误显示"无操作权限"）。
     await reloadDetail()
     await reloadFlowCtx()
     refresh()
@@ -1207,15 +1402,15 @@ async function reloadDetail() {
   } catch (e) { cmx().cmxError?.(`刷新详情失败：${e.message}`) }
 }
 
-// 重拉流程上下文（review-context 按钮权限 + flow-history 审批历史）。
-// 状态动作（提交/作废/审批/撤回）后必须重拉——doc_status 变了，按钮组与流程卡数据源都会变；
-// 失败保持现状不阻断（详情已刷，流程区旧数据可用）。
+// 重拉流程上下文（review-context 按钮权限 + 流程轨迹组件数据）。
+// 状态动作（提交/作废/审批/撤回）后必须重拉——doc_status 变了，按钮组与轨迹都会变；
+// 各自失败保持现状不阻断（详情已刷）。
 async function reloadFlowCtx() {
   if (state.crId == null) return
   try {
     state.reviewCtx = await apiGet(`/api/mdm/change-requests/review-context?crId=${state.crId}`, state.dbId)
-    state.flowHistory = await apiGet(`/api/mdm/change-requests/flow-history?crId=${state.crId}`, state.dbId)
   } catch { /* noop */ }
+  await ftLoad()
 }
 
 function syncSavedLineIds(idMap) {
@@ -1233,6 +1428,10 @@ function syncSavedLineIds(idMap) {
 function bind(root) {
   rootEl = root
   if (state.loading || state.loadErr) return
+  // 流程轨迹组件数据回填（flowTrailHtml 里的静态占位）。
+  root.querySelectorAll('cmx-flow-trail').forEach((el) => {
+    el.trail = (state.flowTrail || [])[0] || null
+  })
   const showSteps = state.mode === 'create' && state.keyDefs.length > 0
   if (showSteps && state.step === 1) {
     try { buildKeyForm() } catch (e) { console.error('[cr-form] buildKeyForm fail', e) }
@@ -1308,7 +1507,9 @@ function bind(root) {
       M.cmxInfo?.('已撤回，单据回到草稿')
       const detail = await apiGet(`/api/mdm/change-requests/detail?crId=${state.crId}`, state.dbId)
       state.crHead = (detail && detail.head) || state.crHead
-      state.flowHistory = null; state.reviewCtx = null
+      // 撤回后轨迹重拉而非清空：被终止的这轮正是要留给用户看的轨迹。
+      state.reviewCtx = null
+      await ftLoad()
       refresh()
     } catch (e) { M.cmxError?.(`撤回失败：${e.message}`) }
   })
@@ -1374,12 +1575,14 @@ async function init(tok) {
       if (state.flowEdit || (state.autoEdit && (state.crHead.doc_status === 'rejected' || state.crHead.doc_status === 'draft'))) {
         state.editing = true
       }
-      // M7：已进入流转的单据拉审批历史（流程卡数据源；失败不阻断表单）。
+      // M7：轨迹对草稿也拉——提交过又撤回的单据有已终止轮次，回草稿仍要看；
+      // 全新草稿拉到空数组走占位卡（「提交后此处展示」），失败不阻断表单。
+      // M7.1：流程操作按钮上下文仅对已进流转的单据拉（草稿无审批任务）。
+      try {
+        state.flowTrail = null
+        await ftLoad()
+      } catch (e) { console.warn('[cr-form] 流程轨迹加载失败', e) }
       if (state.crHead.doc_status !== 'draft') {
-        try {
-          state.flowHistory = await apiGet(`/api/mdm/change-requests/flow-history?crId=${state.crId}`, state.dbId)
-        } catch (e) { console.warn('[cr-form] 流程历史加载失败', e) }
-        // M7.1：流程操作按钮数据源（canReview=当前用户可审；canWithdraw=发起人可撤回）。
         try {
           state.reviewCtx = await apiGet(`/api/mdm/change-requests/review-context?crId=${state.crId}`, state.dbId)
         } catch (e) { console.warn('[cr-form] 流程按钮上下文加载失败', e) }

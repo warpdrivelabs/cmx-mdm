@@ -299,19 +299,22 @@ pub async fn mdm_cr_review_context(
         .await
         .unwrap_or_default();
     // 退回后的发起人重办环节（apply 任务开放且当前用户可办）→ 前端渲染「确认并继续」。
-    let (_apply_instance, apply_task_id, can_apply) =
+    // 退回态下 review 任务已办结、locate_review_task 拿不到实例 → instanceId 用 apply 侧兜底
+    // （同一实例；列表详情工作台的轨迹视图靠它组装上下文）。
+    let (apply_instance, apply_task_id, can_apply) =
         locate_open_task(q.cr_id, &user, "apply", "重办任务不存在或已办结")
             .await
             .unwrap_or_default();
+    let out_instance = if !instance_id.is_empty() { instance_id.clone() } else { apply_instance };
     Ok(Json(ApiResp::ok(json!({
         "crId": q.cr_id,
-        "instanceId": if instance_id.is_empty() { Value::Null } else { json!(instance_id) },
+        "instanceId": if out_instance.is_empty() { Value::Null } else { json!(out_instance) },
         "taskId": if task_id.is_empty() { Value::Null } else { json!(task_id) },
         "canReview": can_review,
         "canApply": can_apply,
         "applyTaskId": if apply_task_id.is_empty() { Value::Null } else { json!(apply_task_id) },
         "canWithdraw": can_withdraw,
-        "state": if instance_id.is_empty() { Value::Null } else { json!("ACTIVE") },
+        "state": if out_instance.is_empty() { Value::Null } else { json!("ACTIVE") },
     }))))
 }
 
